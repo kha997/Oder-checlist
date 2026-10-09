@@ -276,6 +276,7 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
       location,
       deliveryNote: deliveryNote.trim() || undefined,
       note: deliveryNote.trim() || undefined,
+      notes: deliveryNote.trim() || undefined,
       internalNote: internalNote.trim() || undefined,
       paymentStatus,
       paymentMethod: paymentStatus === 'PAID' ? paymentMethod : undefined,

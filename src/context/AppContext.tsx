@@ -69,6 +69,7 @@ interface AppContextType {
     location: OrderLocation;
     deliveryNote?: string;
     note?: string;
+    notes?: string;
     internalNote?: string;
     deliveryStatus?: DeliveryStatus;
     paymentStatus?: 'UNPAID' | 'PAID';
@@ -428,6 +429,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     location: OrderLocation;
     deliveryNote?: string;
     note?: string;
+    notes?: string;
     internalNote?: string;
     deliveryStatus?: DeliveryStatus;
     paymentStatus?: 'UNPAID' | 'PAID';
@@ -487,9 +489,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       paidAmount: isPaid ? totalAmount : undefined,
       paidConfirmedBy: isPaid ? currentUser : undefined,
       status: 'ACTIVE',
-      deliveryNote: orderData.deliveryNote,
+      deliveryNote: orderData.notes || orderData.deliveryNote,
       internalNote: orderData.internalNote,
-      note: orderData.note || orderData.deliveryNote || orderData.internalNote,
+      note: orderData.notes || orderData.note || orderData.deliveryNote || orderData.internalNote,
+      notes: orderData.notes || orderData.deliveryNote || orderData.note,
       tags: orderTags,
       priority: orderData.priority || 'MEDIUM',
       receiptImageUrl: orderData.receiptImageUrl,

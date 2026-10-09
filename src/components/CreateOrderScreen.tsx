@@ -75,8 +75,9 @@ export const CreateOrderScreen: React.FC = () => {
 
   // External fields
   const [externalAddress, setExternalAddress] = useState('');
-  const [deliveryNote, setDeliveryNote] = useState('');
+  const [notes, setNotes] = useState('');
   const [internalNote, setInternalNote] = useState('');
+  const deliveryNote = notes; // Backward-compatible alias
 
   // Tagging State (Urgent, Gift, Subscription, custom tags...)
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -188,7 +189,9 @@ export const CreateOrderScreen: React.FC = () => {
     } else {
       if (cust.externalAddress) setExternalAddress(cust.externalAddress);
     }
-    if (cust.deliveryNote) setDeliveryNote(cust.deliveryNote);
+    if (cust.notes || cust.deliveryNote) {
+      setNotes(cust.notes || cust.deliveryNote || '');
+    }
   };
 
   const handleSelectCustomer = (custId: string) => {
@@ -293,7 +296,8 @@ export const CreateOrderScreen: React.FC = () => {
       unit: locationType === 'condo' ? unit.trim() : undefined,
       formattedAddress,
       externalAddress: locationType === 'external' ? externalAddress.trim() : undefined,
-      deliveryNote: deliveryNote.trim() || undefined,
+      deliveryNote: notes.trim() || undefined,
+      notes: notes.trim() || undefined,
       placeId: placeDetails.placeId,
       standardizedAddress:
         placeDetails.standardizedAddress ||
@@ -316,6 +320,7 @@ export const CreateOrderScreen: React.FC = () => {
       unit: loc.unit,
       externalAddress: loc.externalAddress,
       deliveryNote: loc.deliveryNote,
+      notes: notes.trim() || undefined,
     });
 
     const newOrder = createOrder({
@@ -325,8 +330,9 @@ export const CreateOrderScreen: React.FC = () => {
       cost: totalCost,
       price: totalAmount,
       location: loc,
-      deliveryNote: deliveryNote.trim() || undefined,
-      note: deliveryNote.trim() || undefined,
+      deliveryNote: notes.trim() || undefined,
+      note: notes.trim() || undefined,
+      notes: notes.trim() || undefined,
       internalNote: internalNote.trim() || undefined,
       paymentStatus: isPaid ? 'PAID' : 'UNPAID',
       paymentMethod: isPaid ? paymentMethod : undefined,
@@ -366,7 +372,7 @@ export const CreateOrderScreen: React.FC = () => {
       setSelectedBlock('B');
       setFloor('20');
       setUnit('10');
-      setDeliveryNote('Bấm chuông để cửa');
+      setNotes('Bấm chuông để cửa');
       setSelectedTags(['Urgent', 'VIP']);
       setPriority('HIGH');
       if (products.length >= 2) {
@@ -382,7 +388,7 @@ export const CreateOrderScreen: React.FC = () => {
       setSelectedBlock('B');
       setFloor('15');
       setUnit('01');
-      setDeliveryNote('Treo trước cửa giúp em');
+      setNotes('Treo trước cửa giúp em');
       setSelectedTags(['Subscription']);
       setPriority('MEDIUM');
       if (products.length >= 2) {
@@ -396,7 +402,7 @@ export const CreateOrderScreen: React.FC = () => {
       setSelectedBlock('B');
       setFloor('12');
       setUnit('05');
-      setDeliveryNote('Nhà có em bé ngủ');
+      setNotes('Nhà có em bé ngủ');
       setSelectedTags(['Gift']);
       setPriority('HIGH');
       if (products.length >= 4) {
@@ -409,7 +415,7 @@ export const CreateOrderScreen: React.FC = () => {
       setCustomerPhone('0933445566');
       setLocationType('external');
       setExternalAddress('72 Lê Lợi, P. Bến Nghé, Quận 1 (Tòa nhà AB)');
-      setDeliveryNote('Giao sảnh bảo vệ, gọi trước 5 phút');
+      setNotes('Giao sảnh bảo vệ, gọi trước 5 phút');
       setSelectedTags(['Urgent']);
       setPriority('LOW');
       if (products.length >= 3) {
@@ -451,12 +457,12 @@ export const CreateOrderScreen: React.FC = () => {
               {isPaid ? `Đã thanh toán (${paymentMethod === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản'})` : 'Chưa thu tiền (Unpaid)'}
             </span>
           </div>
-          {deliveryNote && (
+          {notes && (
             <div className="flex justify-between font-medium text-slate-600 pt-1 border-t border-slate-200">
               <span className="flex items-center gap-1 text-amber-700">
-                <FileText className="w-3 h-3" /> Ghi chú giao hàng:
+                <FileText className="w-3 h-3" /> Ghi chú (Notes):
               </span>
-              <span className="font-bold text-amber-900 max-w-[200px] text-right truncate">{deliveryNote}</span>
+              <span className="font-bold text-amber-900 max-w-[200px] text-right truncate">{notes}</span>
             </div>
           )}
           {internalNote && (
@@ -510,7 +516,7 @@ export const CreateOrderScreen: React.FC = () => {
               setFloor('');
               setUnit('');
               setExternalAddress('');
-              setDeliveryNote('');
+              setNotes('');
               setInternalNote('');
               setItemQuantities({});
               setIsPaid(false);
@@ -879,66 +885,108 @@ export const CreateOrderScreen: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
 
-          {/* Notes / Special Delivery Instructions TextArea */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Ghi chú đơn hàng & Hướng dẫn giao hàng (Notes / Delivery Instructions)</span>
-              </label>
-              <span className="text-[10px] text-slate-400 font-semibold">(Tùy chọn / Optional)</span>
-            </div>
-            <div className="relative">
-              <textarea
-                rows={3}
-                placeholder="Nhập hướng dẫn giao hàng đặc biệt (ví dụ: Gate code 1234, Leave at front desk, Treo trước cửa, gọi trước 5 phút, gửi sảnh lễ tân...)"
-                value={deliveryNote}
-                onChange={(e) => setDeliveryNote(e.target.value)}
-                className="w-full px-3 py-2.5 text-xs font-medium rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder:text-slate-400 transition"
-              />
+        {/* SECTION 3: NOTES & SPECIAL DELIVERY INSTRUCTIONS / CUSTOMER REQUESTS */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-emerald-600" />
+              <span>3. Ghi chú (Notes)</span>
+            </h3>
+            <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-full border border-slate-200">
+              Tùy chọn (Optional)
+            </span>
+          </div>
+
+          <p className="text-[11px] text-slate-500">
+            Lưu hướng dẫn giao hàng cụ thể hoặc yêu cầu riêng của khách hàng (Store specific delivery instructions or customer requests).
+          </p>
+
+          <div className="relative">
+            <textarea
+              id="order-notes"
+              name="notes"
+              rows={3}
+              placeholder="Nhập hướng dẫn giao hàng cụ thể hoặc yêu cầu của khách (ví dụ: Gate code 1234, Leave at front desk, Treo trước cửa, gọi trước 5 phút, ít ngọt, không ớt, đóng gói cẩn thận...)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2.5 text-xs font-medium rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder:text-slate-400 transition"
+            />
+          </div>
+
+          {/* Quick suggestions categorized */}
+          <div className="space-y-2 pt-1">
+            {/* Delivery instructions chips */}
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                🚚 Hướng dẫn giao hàng (Delivery Instructions):
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  'Gate code 1234',
+                  'Leave at front desk',
+                  'Treo trước cửa',
+                  'Gọi trước 5 phút',
+                  'Bấm chuông để cửa',
+                  'Gửi sảnh lễ tân',
+                  'Giao sảnh bảo vệ',
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setNotes((prev) => (prev ? `${prev}, ${chip}` : chip))}
+                    className="text-[10px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-200 transition active:scale-95 font-semibold"
+                  >
+                    +{chip}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Quick chips for rapid one-touch entry */}
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="text-[10px] font-bold text-slate-400">Gợi ý nhanh:</span>
-              {[
-                'Gate code 1234',
-                'Leave at front desk',
-                'Treo trước cửa',
-                'Gọi trước 5 phút',
-                'Bấm chuông để cửa',
-                'Gửi sảnh lễ tân',
-                'Giao sảnh bảo vệ',
-                'Nhà có em bé ngủ',
-              ].map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => setDeliveryNote((prev) => (prev ? `${prev}, ${chip}` : chip))}
-                  className="text-[10px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-200 transition active:scale-95 font-semibold"
-                >
-                  +{chip}
-                </button>
-              ))}
-              {deliveryNote && (
-                <button
-                  type="button"
-                  onClick={() => setDeliveryNote('')}
-                  className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1"
-                >
-                  Xóa
-                </button>
-              )}
+            {/* Customer requests chips */}
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                💬 Yêu cầu của khách (Customer Requests):
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  'Khách dặn ít ngọt',
+                  'Tách riêng từng phần',
+                  'Giao trước 12h',
+                  'Không bỏ ớt',
+                  'Cần thêm muỗng đũa',
+                  'Nhà có em bé ngủ',
+                  'Đóng gói làm quà',
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setNotes((prev) => (prev ? `${prev}, ${chip}` : chip))}
+                    className="text-[10px] bg-amber-50 hover:bg-amber-100 hover:text-amber-900 hover:border-amber-300 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-200 transition active:scale-95 font-semibold"
+                  >
+                    +{chip}
+                  </button>
+                ))}
+                {notes && (
+                  <button
+                    type="button"
+                    onClick={() => setNotes('')}
+                    className="text-[10px] text-slate-400 hover:text-rose-600 underline ml-1 font-semibold"
+                  >
+                    Xóa tất cả
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* SECTION 3: PRODUCTS & QUANTITY (ONE OR MULTIPLE) */}
+        {/* SECTION 4: PRODUCTS & QUANTITY (ONE OR MULTIPLE) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-600 tracking-wider">
-              3. Chọn món (Products & Quantity)
+              4. Chọn món (Products & Quantity)
             </h3>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
               {orderItems.length} món đã chọn
@@ -1010,11 +1058,11 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 4: PAYMENT STATUS & METHOD (INDEPENDENT FROM DELIVERY) */}
+        {/* SECTION 5: PAYMENT STATUS & METHOD (INDEPENDENT FROM DELIVERY) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-600 tracking-wider">
-              4. Thanh toán (Payment)
+              5. Thanh toán (Payment)
             </h3>
             <span className="text-[11px] text-slate-500">Độc lập với giao hàng</span>
           </div>
@@ -1078,12 +1126,12 @@ export const CreateOrderScreen: React.FC = () => {
           )}
         </div>
 
-        {/* SECTION 5: INTERNAL NOTE (GHI CHÚ NỘI BỘ DÀNH CHO NGƯỜI BÁN) */}
+        {/* SECTION 6: INTERNAL NOTE (GHI CHÚ NỘI BỘ DÀNH CHO NGƯỜI BÁN) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5 text-purple-600" />
-              5. Ghi chú nội bộ (Internal Note)
+              6. Ghi chú nội bộ (Internal Note)
             </h3>
             <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200/60">
               Chỉ người bán thấy (Seller context)
@@ -1128,12 +1176,12 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 6: GẮN NHÃN PHÂN LOẠI (ORDER TAGS) */}
+        {/* SECTION 7: GẮN NHÃN PHÂN LOẠI (ORDER TAGS) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
               <Tag className="w-3.5 h-3.5 text-rose-600" />
-              6. Gắn nhãn phân loại (Order Tags)
+              7. Gắn nhãn phân loại (Order Tags)
             </h3>
             <span className="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200/60">
               {selectedTags.length > 0 ? `${selectedTags.length} nhãn đã chọn` : 'Tùy chọn'}
@@ -1226,12 +1274,12 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 7: MỨC ĐỘ ƯU TIÊN (PRIORITY TAGGING SYSTEM: LOW, MEDIUM, HIGH) */}
+        {/* SECTION 8: MỨC ĐỘ ƯU TIÊN (PRIORITY TAGGING SYSTEM: LOW, MEDIUM, HIGH) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              7. Mức độ ưu tiên (Priority Tagging)
+              8. Mức độ ưu tiên (Priority Tagging)
             </h3>
             <span
               className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
@@ -1282,12 +1330,12 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 8: TRẠNG THÁI GIAO HÀNG (DELIVERY STATUS TRACKING) */}
+        {/* SECTION 9: TRẠNG THÁI GIAO HÀNG (DELIVERY STATUS TRACKING) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-blue-600" />
-              <span>8. Trạng thái giao nhận (Status Tracking)</span>
+              <span>9. Trạng thái giao nhận (Status Tracking)</span>
             </h3>
             <span
               className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -1355,7 +1403,7 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 9: ĐƠN HÀNG ĐỊNH KỲ (RECURRING ORDERS) */}
+        {/* SECTION 10: ĐƠN HÀNG ĐỊNH KỲ (RECURRING ORDERS) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1364,7 +1412,7 @@ export const CreateOrderScreen: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
-                  9. Đơn hàng định kỳ (Recurring Orders)
+                  10. Đơn hàng định kỳ (Recurring Orders)
                 </h3>
                 <p className="text-[10px] text-slate-500 font-medium">
                   Thiết lập chu kỳ giao lặp lại định kỳ (Hàng ngày, hàng tuần, hàng tháng)

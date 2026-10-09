@@ -469,7 +469,7 @@ export const HomeScreen: React.FC = () => {
                 order.deliveryStatus === 'OUT_FOR_DELIVERY' ||
                 order.deliveryStatus === 'READY_FOR_DELIVERY';
               const noteText =
-                order.deliveryNote || order.note || order.location?.deliveryNote;
+                order.notes || order.deliveryNote || order.note || order.location?.notes || order.location?.deliveryNote;
 
               return (
                 <div

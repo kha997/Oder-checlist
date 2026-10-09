@@ -52,7 +52,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const isDelivered = order.deliveryStatus === 'DELIVERED';
   const isReady = order.deliveryStatus === 'READY_FOR_DELIVERY';
   const isPaid = order.paymentStatus === 'PAID';
-  const specialDeliveryInstructions = order.deliveryNote || order.note || order.location?.deliveryNote;
+  const specialDeliveryInstructions = order.notes || order.deliveryNote || order.note || order.location?.notes || order.location?.deliveryNote;
 
   const handleCopy = () => {
     const lines = [

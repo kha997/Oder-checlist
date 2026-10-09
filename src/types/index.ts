@@ -80,6 +80,7 @@ export interface Customer {
   unit?: string;
   externalAddress?: string;
   deliveryNote?: string;
+  notes?: string;
 }
 
 export interface CondoLocation {
@@ -108,6 +109,7 @@ export interface OrderLocation {
   formattedAddress: string; // e.g. "B-20-10" or "128 Nguyễn Trãi, P. Bến Thành, Q.1"
   externalAddress?: string;
   deliveryNote?: string;
+  notes?: string;
   placeId?: string; // Google Places ID
   standardizedAddress?: string; // Normalized full address
   district?: string; // District / Quận Huyện
@@ -139,6 +141,7 @@ export interface Order {
   deliveryNote?: string;
   internalNote?: string;
   note?: string;
+  notes?: string;
   tags?: string[]; // e.g. ['Urgent', 'Gift', 'Subscription']
   priority?: OrderPriority; // 'LOW' | 'MEDIUM' | 'HIGH'
   receiptImageUrl?: string; // Captured proof of delivery or scanned receipt image
