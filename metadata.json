@@ -1,0 +1,6 @@
+{
+  "name": "Oder Checklist - Simple Order Management",
+  "description": "Mobile-first order checklist and delivery management app for small sellers and apartment deliveries.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

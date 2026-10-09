@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#0f766e" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#064e3b" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#grad1)"/>
+  <!-- Clipboard Body -->
+  <g filter="url(#shadow)">
+    <rect x="116" y="110" width="280" height="320" rx="28" fill="#ffffff" />
+    <!-- Clip Top -->
+    <rect x="186" y="86" width="140" height="48" rx="14" fill="#047857" />
+    <circle cx="256" cy="110" r="10" fill="#ffffff" />
+    <!-- Checkmarks and lines -->
+    <!-- Row 1 -->
+    <circle cx="166" cy="180" r="16" fill="#10b981" />
+    <path d="M159 180l5 5 10 -10" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="200" y="172" width="150" height="16" rx="8" fill="#0f172a" />
+
+    <!-- Row 2 -->
+    <circle cx="166" cy="240" r="16" fill="#10b981" />
+    <path d="M159 240l5 5 10 -10" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="200" y="232" width="130" height="16" rx="8" fill="#0f172a" />
+
+    <!-- Row 3 (Delivery box symbol) -->
+    <circle cx="166" cy="300" r="16" fill="#3b82f6" />
+    <path d="M159 295l7-4 7 4v8l-7 4-7-4z" stroke="#ffffff" stroke-width="2" fill="none"/>
+    <rect x="200" y="292" width="160" height="16" rx="8" fill="#0f172a" />
+
+    <!-- Summary badge -->
+    <rect x="150" y="356" width="212" height="42" rx="12" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="2"/>
+    <text x="256" y="383" font-family="system-ui, -apple-system, sans-serif" font-weight="bold" font-size="18" fill="#065f46" text-anchor="middle">ODER CHECKLIST</text>
+  </g>
+</svg>
