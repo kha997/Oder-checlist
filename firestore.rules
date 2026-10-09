@@ -1,0 +1,151 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'khafibo@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'customerName', 'totalAmount', 'deliveryStatus', 'paymentStatus', 'status', 'createdAt'])
+        && data.id is string && data.id.size() <= 64
+        && data.customerName is string && data.customerName.size() <= 128
+        && data.totalAmount is number
+        && data.deliveryStatus in ['PENDING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED']
+        && data.paymentStatus in ['UNPAID', 'PAID']
+        && data.status in ['ACTIVE', 'CANCELLED']
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'defaultLocationType'])
+        && data.id is string && data.id.size() <= 64
+        && data.name is string && data.name.size() <= 128
+        && data.phone is string && data.phone.size() <= 32
+        && data.defaultLocationType in ['condo', 'external'];
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'price', 'initialStock', 'stockReceived', 'unit'])
+        && data.id is string && data.id.size() <= 64
+        && data.name is string && data.name.size() <= 128
+        && data.price is number
+        && data.initialStock is number
+        && data.stockReceived is number
+        && data.unit is string && data.unit.size() <= 32;
+    }
+
+    function isValidCondo(data) {
+      return data.keys().hasAll(['id', 'name'])
+        && data.id is string && data.id.size() <= 64
+        && data.name is string && data.name.size() <= 128;
+    }
+
+    function isValidStockLog(data) {
+      return data.keys().hasAll(['id', 'productId', 'productName', 'quantityAdded', 'date'])
+        && data.id is string && data.id.size() <= 64
+        && data.productId is string && data.productId.size() <= 64
+        && data.productName is string && data.productName.size() <= 128
+        && data.quantityAdded is number
+        && data.date is string && data.date.size() <= 64;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() <= 128;
+    }
+
+    // Admins collection for role management
+    match /admins/{adminId} {
+      allow get: if isVerifiedUser();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      allow get: if isVerifiedUser() && isValidId(orderId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(orderId) && isValidOrder(incoming());
+      allow update: if isVerifiedUser() && isValidId(orderId) && isValidOrder(incoming());
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow get: if isVerifiedUser() && isValidId(customerId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(customerId) && isValidCustomer(incoming());
+      allow update: if isVerifiedUser() && isValidId(customerId) && isValidCustomer(incoming());
+      allow delete: if isAdmin() && isValidId(customerId);
+    }
+
+    // Products / Menu collection
+    match /products/{productId} {
+      allow get: if isVerifiedUser() && isValidId(productId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming());
+      allow update: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productId);
+    }
+
+    // Condos collection
+    match /condos/{condoId} {
+      allow get: if isVerifiedUser() && isValidId(condoId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(condoId) && isValidCondo(incoming());
+      allow update: if isVerifiedUser() && isValidId(condoId) && isValidCondo(incoming());
+      allow delete: if isAdmin() && isValidId(condoId);
+    }
+
+    // Stock logs collection
+    match /stockLogs/{logId} {
+      allow get: if isVerifiedUser() && isValidId(logId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(logId) && isValidStockLog(incoming());
+      allow update: if isVerifiedUser() && isValidId(logId) && isValidStockLog(incoming());
+      allow delete: if isAdmin() && isValidId(logId);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId);
+      allow list: if isAdmin();
+      allow create, update: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId && isValidUserProfile(incoming());
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // Connection test collection
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

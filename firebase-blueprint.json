@@ -1,0 +1,311 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Delivery order item with items, location, and statuses",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique order ID (e.g. ORD-1001)",
+          "maxLength": 64
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 128
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer phone number",
+          "maxLength": 32
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total order amount in VND"
+        },
+        "price": {
+          "type": "number",
+          "description": "Total order price in VND"
+        },
+        "cost": {
+          "type": "number",
+          "description": "Total order cost in VND"
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "enum": ["PENDING", "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED"],
+          "description": "Current delivery status"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["UNPAID", "PAID"],
+          "description": "Payment status"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["CASH", "BANK_TRANSFER"],
+          "description": "Payment method"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ACTIVE", "CANCELLED"],
+          "description": "Active or cancelled order status"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Order priority level"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Special delivery instructions or customer notes",
+          "maxLength": 500
+        },
+        "deliveryNote": {
+          "type": "string",
+          "description": "Delivery instructions",
+          "maxLength": 500
+        },
+        "internalNote": {
+          "type": "string",
+          "description": "Kitchen or internal notes",
+          "maxLength": 500
+        },
+        "note": {
+          "type": "string",
+          "description": "Legacy note",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp in ISO format",
+          "maxLength": 64
+        },
+        "deliveryTime": {
+          "type": "string",
+          "description": "Delivery completion timestamp",
+          "maxLength": 64
+        },
+        "deliveredBy": {
+          "type": "string",
+          "description": "Shipper who delivered the order",
+          "maxLength": 64
+        },
+        "receiptImageUrl": {
+          "type": "string",
+          "description": "Proof of delivery image or receipt url/base64",
+          "maxLength": 1000000
+        },
+        "proofOfDeliveryTime": {
+          "type": "string",
+          "description": "Timestamp when proof photo was captured",
+          "maxLength": 64
+        },
+        "proofOfDeliveryNote": {
+          "type": "string",
+          "description": "Proof note such as door placement",
+          "maxLength": 200
+        }
+      },
+      "required": ["id", "customerName", "totalAmount", "deliveryStatus", "paymentStatus", "status", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer contact and delivery address profile",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique customer ID",
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 128
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer phone number",
+          "maxLength": 32
+        },
+        "defaultLocationType": {
+          "type": "string",
+          "enum": ["condo", "external"],
+          "description": "Default delivery location type"
+        },
+        "condoName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "block": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "floor": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "externalAddress": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "deliveryNote": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": ["id", "name", "phone", "defaultLocationType"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Menu and inventory item",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Product ID",
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "description": "Product name",
+          "maxLength": 128
+        },
+        "price": {
+          "type": "number",
+          "description": "Selling price in VND"
+        },
+        "cost": {
+          "type": "number",
+          "description": "Cost / purchase price in VND"
+        },
+        "initialStock": {
+          "type": "number",
+          "description": "Initial stock quantity"
+        },
+        "stockReceived": {
+          "type": "number",
+          "description": "Added stock received"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measure (e.g. Phần, Hộp)",
+          "maxLength": 32
+        }
+      },
+      "required": ["id", "name", "price", "initialStock", "stockReceived", "unit"]
+    },
+    "CondoLocation": {
+      "title": "CondoLocation",
+      "description": "Pre-configured condominium complex and tower blocks",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": ["id", "name"]
+    },
+    "StockLog": {
+      "title": "StockLog",
+      "description": "Log entry of inventory stock additions",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "productId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "productName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "quantityAdded": {
+          "type": "number"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "addedBy": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["id", "productId", "productName", "quantityAdded", "date"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Operator / user profile information",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "staff", "shipper"],
+          "description": "Role in the system"
+        }
+      },
+      "required": ["uid", "displayName"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "#/entities/Order",
+      "description": "All customer delivery orders"
+    },
+    "/customers/{customerId}": {
+      "schema": "#/entities/Customer",
+      "description": "Customer directory with addresses and delivery preferences"
+    },
+    "/products/{productId}": {
+      "schema": "#/entities/Product",
+      "description": "Menu products and pricing master data"
+    },
+    "/condos/{condoId}": {
+      "schema": "#/entities/CondoLocation",
+      "description": "Apartment / condominium location profiles"
+    },
+    "/stockLogs/{logId}": {
+      "schema": "#/entities/StockLog",
+      "description": "History of stock entries received"
+    },
+    "/users/{userId}": {
+      "schema": "#/entities/UserProfile",
+      "description": "User profiles and roles"
+    }
+  }
+}

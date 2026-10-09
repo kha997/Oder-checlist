@@ -38,6 +38,19 @@ import {
   requestBrowserNotificationPermission,
   sendBrowserNotification,
 } from '../utils/browserNotification';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, signInWithPopup, signOut, googleProvider } from '../firebase/config';
+import {
+  subscribeToFirebaseCollections,
+  upsertOrderFirestore,
+  updateOrderFirestore,
+  deleteOrderFirestore,
+  upsertCustomerFirestore,
+  upsertProductFirestore,
+  upsertCondoFirestore,
+  addStockLogFirestore,
+  seedLocalDataToFirestoreIfEmpty,
+} from '../firebase/firestoreService';
 
 interface AppContextType {
   // Navigation
@@ -140,6 +153,15 @@ interface AppContextType {
 
   // Reset / Acceptance test helper
   resetToDemoData: () => void;
+
+  // Firebase & Cloud Sync
+  firebaseUser: User | null;
+  cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'needs_auth' | 'error';
+  isCloudSyncActive: boolean;
+  lastCloudSyncTime: string | null;
+  signInWithGoogle: () => Promise<void>;
+  signOutGoogle: () => Promise<void>;
+  syncLocalToCloud: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -350,6 +372,142 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     saveToStorage(STORAGE_KEYS.STOCK_LOGS, stockLogs);
   }, [stockLogs]);
 
+  // Firebase Auth and Cloud Sync State
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<
+    'synced' | 'syncing' | 'offline' | 'needs_auth' | 'error'
+  >('needs_auth');
+  const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
+
+  const isCloudSyncActive = Boolean(firebaseUser && cloudSyncStatus === 'synced');
+
+  const signInWithGoogle = async () => {
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      setFirebaseUser(res.user);
+      setCloudSyncStatus('syncing');
+    } catch (err) {
+      console.error('Google Sign In error:', err);
+      throw err;
+    }
+  };
+
+  const signOutGoogle = async () => {
+    await signOut(auth);
+    setFirebaseUser(null);
+    setCloudSyncStatus('needs_auth');
+  };
+
+  const syncLocalToCloud = async () => {
+    if (!firebaseUser) {
+      throw new Error('Vui lòng đăng nhập Google để kích hoạt đồng bộ Cloud.');
+    }
+    setCloudSyncStatus('syncing');
+    try {
+      for (const ord of orders) {
+        await upsertOrderFirestore(ord);
+      }
+      for (const c of customers) {
+        await upsertCustomerFirestore(c);
+      }
+      for (const p of products) {
+        await upsertProductFirestore(p);
+      }
+      for (const condo of condos) {
+        await upsertCondoFirestore(condo);
+      }
+      for (const l of stockLogs) {
+        await addStockLogFirestore(l);
+      }
+      setLastCloudSyncTime(new Date().toISOString());
+      setCloudSyncStatus('synced');
+    } catch (err) {
+      setCloudSyncStatus('error');
+      throw err;
+    }
+  };
+
+  // Real-time Firestore synchronization listener
+  useEffect(() => {
+    let unsubSnapshot: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      if (user) {
+        setCloudSyncStatus('syncing');
+        try {
+          await seedLocalDataToFirestoreIfEmpty({
+            orders,
+            customers,
+            products,
+            condos,
+            stockLogs,
+          });
+
+          unsubSnapshot = subscribeToFirebaseCollections({
+            onOrdersChange: (remoteOrders) => {
+              if (remoteOrders && remoteOrders.length > 0) {
+                setOrders(remoteOrders);
+                setLastCloudSyncTime(new Date().toISOString());
+                setCloudSyncStatus('synced');
+              }
+            },
+            onCustomersChange: (remoteCust) => {
+              if (remoteCust && remoteCust.length > 0) {
+                setCustomers(remoteCust);
+              }
+            },
+            onProductsChange: (remoteProds) => {
+              if (remoteProds && remoteProds.length > 0) {
+                setRawProducts(
+                  remoteProds.map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    price: p.price,
+                    cost: p.cost !== undefined ? p.cost : Math.round(p.price * 0.45),
+                    initialStock: p.initialStock,
+                    stockReceived: p.stockReceived,
+                    unit: p.unit || 'Phần',
+                  }))
+                );
+              }
+            },
+            onCondosChange: (remoteCondos) => {
+              if (remoteCondos && remoteCondos.length > 0) {
+                setCondos(remoteCondos);
+              }
+            },
+            onStockLogsChange: (remoteLogs) => {
+              if (remoteLogs && remoteLogs.length > 0) {
+                setStockLogs(remoteLogs);
+              }
+            },
+            onError: (err) => {
+              console.warn('Real-time sync error:', err);
+              setCloudSyncStatus('error');
+            },
+          });
+        } catch (err) {
+          console.error('Failed to initialize Firebase listeners:', err);
+          setCloudSyncStatus('error');
+        }
+      } else {
+        setCloudSyncStatus('needs_auth');
+        if (unsubSnapshot) {
+          unsubSnapshot();
+          unsubSnapshot = null;
+        }
+      }
+    });
+
+    return () => {
+      unsubAuth();
+      if (unsubSnapshot) {
+        unsubSnapshot();
+      }
+    };
+  }, []);
+
   // Dynamic Product calculation:
   // Strictly prevent double deduction and stock drift.
   // Quantity sold is computed directly from active (non-cancelled) orders.
@@ -503,6 +661,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setOrders((prev) => [newOrder, ...prev]);
+
+    if (firebaseUser) {
+      upsertOrderFirestore(newOrder).catch((err) => console.error('Error saving order to Firestore:', err));
+    }
 
     // Push notification alert for new order
     pushAlertNotification({
@@ -1043,6 +1205,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         globalSearchQuery,
         setGlobalSearchQuery,
         resetToDemoData,
+        firebaseUser,
+        cloudSyncStatus,
+        isCloudSyncActive,
+        lastCloudSyncTime,
+        signInWithGoogle,
+        signOutGoogle,
+        syncLocalToCloud,
       }}
     >
       {children}
