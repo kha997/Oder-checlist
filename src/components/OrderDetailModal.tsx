@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod, getOrderCost, getOrderPrice, getOrderProfit } from '../types';
+import { Order, PaymentMethod, getOrderCost, getOrderPrice, getOrderProfit, Customer } from '../types';
 import { ProofOfDeliveryCameraModal } from './ProofOfDeliveryCameraModal';
+import { VietQRModal } from './VietQRModal';
+import { ShipperQuickContactModal } from './ShipperQuickContactModal';
+import { BankSettingsModal } from './BankSettingsModal';
+import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
+import { getZaloChatUrl, cleanPhoneNumber } from '../utils/vietqr';
 import {
   X,
   CheckCircle2,
@@ -10,6 +15,8 @@ import {
   Rocket,
   Banknote,
   Phone,
+  MessageCircle,
+  QrCode,
   Building2,
   MapPin,
   FileText,
@@ -27,6 +34,7 @@ import {
   Maximize2,
   Download,
   Sparkles,
+  Receipt,
 } from 'lucide-react';
 
 interface OrderDetailModalProps {
@@ -42,10 +50,54 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   onClose,
   onNavigateToHistory,
 }) => {
-  const { markReadyForDelivery, markDelivered, markPaid, currentUser, setCurrentScreen, setGlobalSearchQuery } = useApp();
+  const {
+    markReadyForDelivery,
+    markDelivered,
+    markPaid,
+    currentUser,
+    setCurrentScreen,
+    setGlobalSearchQuery,
+    roleConfig,
+    customers,
+  } = useApp();
   const [copied, setCopied] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showFullImageModal, setShowFullImageModal] = useState(false);
+  const [showVietQrModal, setShowVietQrModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [showBankSettingsModal, setShowBankSettingsModal] = useState(false);
+  const [showCustomerDebtModal, setShowCustomerDebtModal] = useState(false);
+
+  const matchedCustomer: Customer = React.useMemo(() => {
+    if (!order) {
+      return {
+        id: 'unknown',
+        name: 'Khách hàng',
+        phone: '',
+        defaultLocationType: 'condo',
+      };
+    }
+    const cleanP = cleanPhoneNumber(order.customerPhone);
+    const existing = customers.find(
+      (c) =>
+        (cleanP && cleanPhoneNumber(c.phone) === cleanP) ||
+        (c.name && order.customerName && c.name.trim().toLowerCase() === order.customerName.trim().toLowerCase())
+    );
+    if (existing) return existing;
+
+    return {
+      id: `temp_${cleanP || order.customerName}`,
+      name: order.customerName,
+      phone: order.customerPhone || '',
+      defaultLocationType: order.location.type,
+      condoName: order.location.condoName,
+      block: order.location.block,
+      floor: order.location.floor,
+      unit: order.location.unit,
+      externalAddress: order.location.formattedAddress,
+      deliveryNote: order.location.deliveryNote,
+    };
+  }, [order, customers]);
 
   if (!isOpen || !order) return null;
 
@@ -184,13 +236,43 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <p className="text-sm font-black text-slate-900">{order.customerName}</p>
               </div>
               {order.customerPhone && (
-                <a
-                  href={`tel:${order.customerPhone}`}
-                  className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold flex items-center gap-1.5 transition active:scale-95 border border-blue-200"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{order.customerPhone}</span>
-                </a>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <a
+                    href={`tel:${order.customerPhone}`}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1.5 transition active:scale-95 border border-emerald-200 text-xs"
+                    title="Gọi điện ngay"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{order.customerPhone}</span>
+                  </a>
+                  <a
+                    href={getZaloChatUrl(order.customerPhone)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold flex items-center gap-1.5 transition active:scale-95 border border-blue-200 text-xs"
+                    title="Mở Zalo chat"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Zalo</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowContactModal(true)}
+                    className="p-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition"
+                    title="Mẫu tin nhắn shipper / thông báo"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerDebtModal(true)}
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold flex items-center gap-1.5 transition active:scale-95 border border-indigo-200 text-xs"
+                    title="Mở Sổ Quản lý Công nợ chi tiết của khách hàng này"
+                  >
+                    <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Sổ nợ</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -316,24 +398,28 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <span>Giá bán (Selling Price):</span>
                 <span className="font-bold text-slate-700 font-mono">{formatVND(getOrderPrice(order))}</span>
               </div>
-              <div className="flex justify-between items-center text-[11px] text-slate-500">
-                <span>Giá vốn ước tính (Cost):</span>
-                <span className="font-bold text-slate-700 font-mono">{formatVND(getOrderCost(order))}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs font-bold pt-1 border-t border-dashed border-slate-200">
-                <span className="flex items-center gap-1 text-emerald-800">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Lợi nhuận gộp (Profit):</span>
-                </span>
-                <div className="text-right">
-                  <span className="font-black text-emerald-700 font-mono">
-                    {formatVND(getOrderProfit(order))}
-                  </span>
-                  <span className="text-[10px] text-emerald-600 font-bold ml-1.5">
-                    ({getOrderPrice(order) > 0 ? Math.round((getOrderProfit(order) / getOrderPrice(order)) * 100) : 0}%)
-                  </span>
-                </div>
-              </div>
+              {roleConfig.canViewCostAndProfit && (
+                <>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500">
+                    <span>Giá vốn ước tính (Cost):</span>
+                    <span className="font-bold text-slate-700 font-mono">{formatVND(getOrderCost(order))}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-bold pt-1 border-t border-dashed border-slate-200">
+                    <span className="flex items-center gap-1 text-emerald-800">
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Lợi nhuận gộp (Profit):</span>
+                    </span>
+                    <div className="text-right">
+                      <span className="font-black text-emerald-700 font-mono">
+                        {formatVND(getOrderProfit(order))}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 font-bold ml-1.5">
+                        ({getOrderPrice(order) > 0 ? Math.round((getOrderProfit(order) / getOrderPrice(order)) * 100) : 0}%)
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-black">
                 <span className="text-slate-900">TỔNG TIỀN THU:</span>
                 <span className="text-base text-emerald-700 font-mono">
@@ -501,13 +587,25 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
             {/* Pay buttons if unpaid */}
             {!isPaid && (
-              <button
-                onClick={() => markPaid(order.id, 'CASH')}
-                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
-              >
-                <Banknote className="w-3.5 h-3.5" />
-                <span>Thu tiền mặt</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowVietQrModal(true)}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
+                  title="Mở mã QR ngân hàng VietQR chuẩn Napas 247"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Mã VietQR</span>
+                </button>
+
+                <button
+                  onClick={() => markPaid(order.id, 'CASH')}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
+                >
+                  <Banknote className="w-3.5 h-3.5" />
+                  <span>Thu tiền mặt</span>
+                </button>
+              </>
             )}
           </div>
 
@@ -580,6 +678,43 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           )}
         </div>
       )}
+
+      {/* VietQR Payment Modal */}
+      <VietQRModal
+        order={order}
+        isOpen={showVietQrModal}
+        onClose={() => setShowVietQrModal(false)}
+        onOpenBankSettings={() => setShowBankSettingsModal(true)}
+      />
+
+      {/* Shipper Quick Contact Modal */}
+      <ShipperQuickContactModal
+        order={order}
+        isOpen={showContactModal}
+        onClose={() => setShowContactModal(false)}
+        onOpenVietQr={() => {
+          setShowContactModal(false);
+          setShowVietQrModal(true);
+        }}
+      />
+
+      {/* Bank Account Settings Modal */}
+      <BankSettingsModal
+        isOpen={showBankSettingsModal}
+        onClose={() => setShowBankSettingsModal(false)}
+      />
+
+      {/* Customer Debt Ledger Modal */}
+      <CustomerDebtLedgerModal
+        customer={matchedCustomer}
+        isOpen={showCustomerDebtModal}
+        onClose={() => setShowCustomerDebtModal(false)}
+        onOpenCreateOrder={() => {
+          setShowCustomerDebtModal(false);
+          onClose();
+          setCurrentScreen('CREATE_ORDER');
+        }}
+      />
     </div>
   );
 };

@@ -14,6 +14,7 @@ import {
 import { GooglePlacesAddressLookup } from './GooglePlacesAddressLookup';
 import { GooglePlaceSuggestion } from '../utils/googlePlacesService';
 import { removeVietnameseTones } from '../utils/searchHelper';
+import { VoiceNoteDictationButton } from './VoiceNoteDictationButton';
 import {
   Plus,
   Minus,
@@ -734,11 +735,15 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
 
               {/* 5. NOTES / SPECIAL DELIVERY INSTRUCTIONS */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                   <label className="text-[10px] font-bold text-slate-600">
-                    Ghi chú & Hướng dẫn giao hàng (Notes / Delivery Instructions):
+                    Ghi chú & Hướng dẫn giao hàng (Notes):
                   </label>
-                  <span className="text-[9px] text-slate-400 font-semibold">(Tùy chọn)</span>
+                  <VoiceNoteDictationButton
+                    currentValue={deliveryNote}
+                    onValueChange={(val) => setDeliveryNote(val)}
+                    buttonLabel="Đọc giọng nói"
+                  />
                 </div>
                 <textarea
                   rows={2}

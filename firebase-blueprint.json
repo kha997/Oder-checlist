@@ -275,8 +275,8 @@
         },
         "role": {
           "type": "string",
-          "enum": ["admin", "staff", "shipper"],
-          "description": "Role in the system"
+          "enum": ["ADMIN", "KITCHEN", "SHIPPER", "CASHIER", "admin", "staff", "shipper"],
+          "description": "Role in the system: ADMIN, KITCHEN, SHIPPER, CASHIER"
         }
       },
       "required": ["uid", "displayName"]

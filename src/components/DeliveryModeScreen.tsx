@@ -6,6 +6,10 @@ import { ExportOrderReportModal } from './ExportOrderReportModal';
 import { RouteMapView } from './RouteMapView';
 import { OrderDetailModal } from './OrderDetailModal';
 import { ProofOfDeliveryCameraModal } from './ProofOfDeliveryCameraModal';
+import { VietQRModal } from './VietQRModal';
+import { BankSettingsModal } from './BankSettingsModal';
+import { ShipperQuickContactModal } from './ShipperQuickContactModal';
+import { getZaloChatUrl } from '../utils/vietqr';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
 import {
   ArrowLeft,
@@ -13,6 +17,8 @@ import {
   Building2,
   CheckCircle2,
   Phone,
+  MessageCircle,
+  QrCode,
   FileText,
   Clock,
   UserCheck,
@@ -47,6 +53,9 @@ export const DeliveryModeScreen: React.FC = () => {
   const [deliveryViewMode, setDeliveryViewMode] = useState<'LIST' | 'ROUTE_MAP'>('LIST');
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
   const [podModalOrder, setPodModalOrder] = useState<Order | null>(null);
+  const [selectedVietQrOrder, setSelectedVietQrOrder] = useState<Order | null>(null);
+  const [selectedContactOrder, setSelectedContactOrder] = useState<Order | null>(null);
+  const [showBankSettings, setShowBankSettings] = useState(false);
 
   // Selected Condo & Block
   const [selectedCondoId, setSelectedCondoId] = useState(condos[0]?.id || '');
@@ -286,6 +295,15 @@ export const DeliveryModeScreen: React.FC = () => {
           <p className="text-[10px] text-slate-500 font-medium">Sắp xếp tối ưu từ tầng cao xuống thấp</p>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowBankSettings(true)}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 shadow-2xs transition active:scale-95 flex items-center gap-1"
+            title="Cài đặt thông tin tài khoản ngân hàng & mẫu VietQR"
+          >
+            <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Cài VietQR</span>
+          </button>
           <button
             onClick={() => setIsPrintManifestOpen(true)}
             className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition active:scale-95 flex items-center gap-1"
@@ -898,23 +916,56 @@ export const DeliveryModeScreen: React.FC = () => {
                         })}
                     </div>
 
-                    {/* Customer & Phone */}
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800">{order.customerName}</span>
-                        {order.customerPhone && (
-                          <a
-                            href={`tel:${order.customerPhone}`}
-                            className="text-blue-600 font-semibold flex items-center gap-1 hover:underline"
-                          >
-                            <Phone className="w-3 h-3" />
-                            <span>{order.customerPhone}</span>
-                          </a>
-                        )}
+                    {/* Customer & Phone & VietQR Quick Actions */}
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-extrabold text-slate-900">{order.customerName}</span>
+                        {order.customerPhone ? (
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={`tel:${order.customerPhone}`}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg border border-emerald-200/80 flex items-center gap-1 active:scale-95 transition"
+                              title="Gọi điện thoại ngay cho khách"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <span>{order.customerPhone}</span>
+                            </a>
+                            <a
+                              href={getZaloChatUrl(order.customerPhone)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg border border-blue-200 flex items-center gap-1 active:scale-95 transition text-[11px]"
+                              title="Mở Zalo Chat 1-chạm"
+                            >
+                              <MessageCircle className="w-3 h-3 text-blue-600" />
+                              <span>Zalo</span>
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedContactOrder(order)}
+                              className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition"
+                              title="Mẫu tin nhắn nhanh shipper"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
-                      <span className="font-extrabold text-slate-900 text-sm">
-                        {formatVND(order.totalAmount)}
-                      </span>
+
+                      <div className="flex items-center gap-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVietQrOrder(order)}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 flex items-center gap-1 active:scale-95 transition shadow-2xs"
+                          title="Mở mã QR ngân hàng VietQR cho khách quét chuyển khoản"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>VietQR</span>
+                        </button>
+                        <span className="font-black text-slate-900 text-sm font-mono">
+                          {formatVND(order.totalAmount)}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Items List */}
@@ -1219,22 +1270,56 @@ export const DeliveryModeScreen: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Customer phone & items */}
-                    <div className="flex items-center justify-between text-xs">
-                      {order.customerPhone ? (
-                        <a
-                          href={`tel:${order.customerPhone}`}
-                          className="text-blue-600 font-bold flex items-center gap-1 hover:underline"
+                    {/* Customer phone & items & Quick Actions */}
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-extrabold text-slate-900">{order.customerName}</span>
+                        {order.customerPhone ? (
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={`tel:${order.customerPhone}`}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg border border-emerald-200/80 flex items-center gap-1 active:scale-95 transition"
+                              title="Gọi điện thoại ngay cho khách"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <span>{order.customerPhone}</span>
+                            </a>
+                            <a
+                              href={getZaloChatUrl(order.customerPhone)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg border border-blue-200 flex items-center gap-1 active:scale-95 transition text-[11px]"
+                              title="Mở Zalo Chat 1-chạm"
+                            >
+                              <MessageCircle className="w-3 h-3 text-blue-600" />
+                              <span>Zalo</span>
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedContactOrder(order)}
+                              className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition"
+                              title="Mẫu tin nhắn nhanh shipper"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center gap-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVietQrOrder(order)}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 flex items-center gap-1 active:scale-95 transition shadow-2xs"
+                          title="Mở mã QR ngân hàng VietQR cho khách quét chuyển khoản"
                         >
-                          <Phone className="w-3 h-3" />
-                          <span>{order.customerPhone}</span>
-                        </a>
-                      ) : (
-                        <span></span>
-                      )}
-                      <span className="font-black text-slate-900 text-base">
-                        {formatVND(order.totalAmount)}
-                      </span>
+                          <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>VietQR</span>
+                        </button>
+                        <span className="font-black text-slate-900 text-base font-mono">
+                          {formatVND(order.totalAmount)}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="bg-slate-50 rounded-xl p-2 text-xs text-slate-700 space-y-1">
@@ -1634,6 +1719,31 @@ export const DeliveryModeScreen: React.FC = () => {
         isOpen={Boolean(podModalOrder)}
         onClose={() => setPodModalOrder(null)}
         order={podModalOrder}
+      />
+
+      {/* VietQR Payment Modal */}
+      <VietQRModal
+        order={selectedVietQrOrder}
+        isOpen={Boolean(selectedVietQrOrder)}
+        onClose={() => setSelectedVietQrOrder(null)}
+        onOpenBankSettings={() => setShowBankSettings(true)}
+      />
+
+      {/* Shipper Quick Contact (Zalo, Call, Message Templates) */}
+      <ShipperQuickContactModal
+        order={selectedContactOrder}
+        isOpen={Boolean(selectedContactOrder)}
+        onClose={() => setSelectedContactOrder(null)}
+        onOpenVietQr={(ord) => {
+          setSelectedContactOrder(null);
+          setSelectedVietQrOrder(ord);
+        }}
+      />
+
+      {/* Bank Account Settings Modal */}
+      <BankSettingsModal
+        isOpen={showBankSettings}
+        onClose={() => setShowBankSettings(false)}
       />
     </div>
   );

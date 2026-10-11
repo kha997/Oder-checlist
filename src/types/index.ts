@@ -81,6 +81,26 @@ export interface Customer {
   externalAddress?: string;
   deliveryNote?: string;
   notes?: string;
+  debtLimit?: number; // Hạn mức công nợ tối đa (VND), ví dụ 500.000đ, 1.000.000đ
+  isVip?: boolean;
+  lastReminderAt?: string; // Thời điểm gần nhất đã gửi tin nhắc nợ
+  reminderCount?: number; // Số lần đã gửi tin nhắc nợ
+}
+
+export interface CustomerDebtSummary {
+  customer: Customer;
+  unpaidOrders: Order[];
+  paidOrders: Order[];
+  totalDebt: number; // Tổng số tiền nợ chưa thanh toán
+  totalSpent: number; // Tổng chi tiêu tích lũy
+  totalOrdersCount: number;
+  unpaidCount: number;
+  oldestUnpaidOrder?: Order;
+  daysSinceOldestDebt: number;
+  isOverdue: boolean; // Có đơn nợ quá 7 ngày
+  isOverLimit: boolean; // Nợ vượt hạn mức (nếu có cấu hình debtLimit)
+  lastReminderAt?: string;
+  reminderCount?: number;
 }
 
 export interface CondoLocation {
@@ -310,4 +330,122 @@ export type ScreenType =
   | 'INVENTORY'
   | 'REPORT'
   | 'ORDER_HISTORY'
-  | 'CUSTOMERS';
+  | 'CUSTOMERS'
+  | 'STAFF_MANAGEMENT';
+
+export type UserRole = 'ADMIN' | 'KITCHEN' | 'SHIPPER' | 'CASHIER';
+
+export interface RoleConfig {
+  role: UserRole;
+  label: string;
+  shortLabel: string;
+  badgeClass: string;
+  dotColor: string;
+  description: string;
+  allowedScreens: ScreenType[];
+  canViewCostAndProfit: boolean;
+  canManageStaff: boolean;
+  canManageProducts: boolean;
+  canAdjustStock: boolean;
+  canDeleteOrders: boolean;
+  canConfirmPayment: boolean;
+  canCreateOrder: boolean;
+}
+
+export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
+  ADMIN: {
+    role: 'ADMIN',
+    label: 'Chủ quán (Admin)',
+    shortLabel: 'Admin',
+    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
+    dotColor: 'bg-purple-500',
+    description: 'Toàn quyền quản trị hệ thống, tài chính, giá vốn, doanh thu, kho và nhân viên',
+    allowedScreens: ['HOME', 'CREATE_ORDER', 'DELIVERY', 'UNPAID', 'INVENTORY', 'ORDER_HISTORY', 'REPORT', 'CUSTOMERS', 'STAFF_MANAGEMENT'],
+    canViewCostAndProfit: true,
+    canManageStaff: true,
+    canManageProducts: true,
+    canAdjustStock: true,
+    canDeleteOrders: true,
+    canConfirmPayment: true,
+    canCreateOrder: true,
+  },
+  KITCHEN: {
+    role: 'KITCHEN',
+    label: 'Bộ phận Bếp (Kitchen)',
+    shortLabel: 'Bếp',
+    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+    dotColor: 'bg-amber-500',
+    description: 'Theo dõi món cần chế biến, báo sẵn sàng giao, xem ghi chú & tồn kho món',
+    allowedScreens: ['HOME', 'INVENTORY', 'ORDER_HISTORY'],
+    canViewCostAndProfit: false,
+    canManageStaff: false,
+    canManageProducts: false,
+    canAdjustStock: false,
+    canDeleteOrders: false,
+    canConfirmPayment: false,
+    canCreateOrder: false,
+  },
+  SHIPPER: {
+    role: 'SHIPPER',
+    label: 'Giao hàng (Shipper)',
+    shortLabel: 'Shipper',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
+    dotColor: 'bg-blue-500',
+    description: 'Nhận đơn đi giao, chụp ảnh bằng chứng giao hàng (POD), gọi khách, thu tiền COD',
+    allowedScreens: ['DELIVERY', 'HOME', 'ORDER_HISTORY'],
+    canViewCostAndProfit: false,
+    canManageStaff: false,
+    canManageProducts: false,
+    canAdjustStock: false,
+    canDeleteOrders: false,
+    canConfirmPayment: true,
+    canCreateOrder: false,
+  },
+  CASHIER: {
+    role: 'CASHIER',
+    label: 'Thu ngân / Bán hàng',
+    shortLabel: 'Thu ngân',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    dotColor: 'bg-emerald-500',
+    description: 'Tạo đơn hàng, quản lý danh bạ khách, in hóa đơn, xác nhận thanh toán chuyển khoản & tiền mặt',
+    allowedScreens: ['HOME', 'CREATE_ORDER', 'UNPAID', 'CUSTOMERS', 'ORDER_HISTORY'],
+    canViewCostAndProfit: false,
+    canManageStaff: false,
+    canManageProducts: false,
+    canAdjustStock: false,
+    canDeleteOrders: false,
+    canConfirmPayment: true,
+    canCreateOrder: true,
+  },
+};
+
+export interface StaffUser {
+  id: string;
+  name: string;
+  role: UserRole;
+  email?: string;
+  phone?: string;
+  pin?: string;
+  active: boolean;
+  avatar?: string;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export interface StoreBankConfig {
+  bankBin: string; // e.g. "970422" (MB Bank)
+  bankCode: string; // e.g. "MB"
+  bankName: string; // e.g. "MBBank - Ngân hàng Quân Đội"
+  accountNumber: string; // e.g. "0901234567"
+  accountHolder: string; // e.g. "NGUYEN THI HOA"
+  qrTemplate: 'compact2' | 'compact' | 'qr_only' | 'print';
+}
+
+export const DEFAULT_BANK_CONFIG: StoreBankConfig = {
+  bankBin: '970422',
+  bankCode: 'MB',
+  bankName: 'MBBank - Ngân hàng Quân Đội',
+  accountNumber: '0901234567',
+  accountHolder: 'CHU SHOP HOA',
+  qrTemplate: 'compact2',
+};

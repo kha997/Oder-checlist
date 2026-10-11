@@ -19,6 +19,9 @@ import { formatVND } from '../utils/storage';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { GooglePlacesAddressLookup } from './GooglePlacesAddressLookup';
 import { GooglePlaceSuggestion } from '../utils/googlePlacesService';
+import { VietQRModal } from './VietQRModal';
+import { VoiceNoteDictationButton } from './VoiceNoteDictationButton';
+import { VoiceOrderDictationModal } from './VoiceOrderDictationModal';
 import {
   ArrowLeft,
   Building2,
@@ -37,15 +40,20 @@ import {
   X,
   Tag,
   AlertTriangle,
+  AlertCircle,
   Truck,
   Clock,
   CheckCircle2,
   Repeat,
   Calendar,
+  QrCode,
+  Mic,
+  Volume2,
 } from 'lucide-react';
 
 export const CreateOrderScreen: React.FC = () => {
   const {
+    orders,
     products,
     condos,
     customers,
@@ -56,7 +64,34 @@ export const CreateOrderScreen: React.FC = () => {
     selectedCustomerForOrder,
     setSelectedCustomerForOrder,
     setCurrentScreen,
+    roleConfig,
+    activeStaff,
   } = useApp();
+
+  const [showVietQrModal, setShowVietQrModal] = useState(false);
+
+  // Role permission guard
+  if (!roleConfig.canCreateOrder) {
+    return (
+      <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-md text-center">
+        <div className="w-14 h-14 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center mx-auto mb-4 text-amber-600">
+          <AlertCircle className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900 mb-1">
+          Quyền Tạo Đơn Hàng Bị Giới Hạn
+        </h3>
+        <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+          Tài khoản <strong>{activeStaff.name}</strong> ({roleConfig.label}) không có quyền tạo đơn hàng mới. Vui lòng chuyển sang vai trò <strong>Thu ngân</strong> hoặc <strong>Chủ quán (Admin)</strong>.
+        </p>
+        <button
+          onClick={() => setCurrentScreen('HOME')}
+          className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+        >
+          <span>Quay lại Trang chủ</span>
+        </button>
+      </div>
+    );
+  }
 
   // Form State
   const [customerName, setCustomerName] = useState('');
@@ -110,6 +145,40 @@ export const CreateOrderScreen: React.FC = () => {
   // Quick Customer Selector Modal State
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+
+  // Voice-to-Text Dictation State
+  const [showVoiceOrderModal, setShowVoiceOrderModal] = useState(false);
+  const [voiceSuccessToast, setVoiceSuccessToast] = useState<string | null>(null);
+
+  const handleApplyVoiceOrder = (data: {
+    itemQuantities: Record<string, number>;
+    locationType?: 'condo' | 'external';
+    condoId?: string;
+    block?: string;
+    floor?: string;
+    unit?: string;
+    externalAddress?: string;
+    customerName?: string;
+    customerPhone?: string;
+    notes?: string;
+  }) => {
+    if (data.itemQuantities && Object.keys(data.itemQuantities).length > 0) {
+      setItemQuantities((prev) => ({ ...prev, ...data.itemQuantities }));
+    }
+    if (data.locationType) setLocationType(data.locationType);
+    if (data.condoId) setSelectedCondoId(data.condoId);
+    if (data.block) setSelectedBlock(data.block);
+    if (data.floor) setFloor(data.floor);
+    if (data.unit) setUnit(data.unit);
+    if (data.externalAddress) setExternalAddress(data.externalAddress);
+    if (data.customerName) setCustomerName(data.customerName);
+    if (data.customerPhone) setCustomerPhone(data.customerPhone);
+    if (data.notes) {
+      setNotes((prev) => (prev ? `${prev}, ${data.notes}` : data.notes || ''));
+    }
+    setVoiceSuccessToast('Đã trích xuất thông tin giọng nói và điền vào đơn hàng thành công!');
+    setTimeout(() => setVoiceSuccessToast(null), 4000);
+  };
 
   // Standardized Place Details from Google Places Lookup
   const [placeDetails, setPlaceDetails] = useState<{
@@ -507,6 +576,35 @@ export const CreateOrderScreen: React.FC = () => {
             </span>
           </div>
         </div>
+
+        {/* VietQR Quick Action if order is unpaid or bank transfer */}
+        {(() => {
+          const createdOrder = orders.find((o) => o.id === successOrder) || null;
+          return (
+            <>
+              {createdOrder && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowVietQrModal(true)}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-md shadow-indigo-600/25 ring-2 ring-indigo-300/40"
+                    title="Mở mã QR ngân hàng VietQR cho khách quét chuyển khoản"
+                  >
+                    <QrCode className="w-4 h-4 text-indigo-200" />
+                    <span>Mở mã VietQR chuyển khoản (Napas 247)</span>
+                  </button>
+                </div>
+              )}
+
+              <VietQRModal
+                order={createdOrder}
+                isOpen={showVietQrModal}
+                onClose={() => setShowVietQrModal(false)}
+              />
+            </>
+          );
+        })()}
+
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => {
@@ -553,8 +651,64 @@ export const CreateOrderScreen: React.FC = () => {
         <h2 className="text-base font-black text-slate-800 uppercase tracking-wide">
           TẠO ĐƠN HÀNG MỚI
         </h2>
-        <div className="w-16"></div>
+        <button
+          type="button"
+          onClick={() => setShowVoiceOrderModal(true)}
+          className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-xl transition shadow-2xs"
+          title="Mở micro đọc đơn bằng giọng nói"
+        >
+          <Mic className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="hidden sm:inline">Đọc giọng nói</span>
+        </button>
       </div>
+
+      {/* Voice Order Assistant Banner */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-2xl p-3 sm:p-3.5 text-white shadow-md shadow-emerald-600/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 shadow-inner">
+            <Mic className="w-5 h-5 text-white animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-xs sm:text-sm font-extrabold tracking-tight">
+                Nhập Đơn Nhanh Bằng Giọng Nói (Voice-to-Text)
+              </h3>
+              <span className="text-[10px] bg-emerald-400/30 text-white font-black px-2 py-0.5 rounded-full border border-white/20">
+                AI Phân Tích
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-100 mt-0.5">
+              Đọc tự nhiên tên món, số lượng, phòng/toà, và dặn dò của khách hàng
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowVoiceOrderModal(true)}
+          className="px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-black uppercase tracking-wide flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs shrink-0"
+        >
+          <Mic className="w-4 h-4 text-emerald-600" />
+          <span>Mở micro đọc đơn</span>
+        </button>
+      </div>
+
+      {/* Voice Applied Success Toast */}
+      {voiceSuccessToast && (
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{voiceSuccessToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setVoiceSuccessToast(null)}
+            className="text-emerald-700 hover:text-emerald-900 p-0.5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Quick Preset Buttons for rapid testing */}
       <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-2.5">
@@ -889,14 +1043,22 @@ export const CreateOrderScreen: React.FC = () => {
 
         {/* SECTION 3: NOTES & SPECIAL DELIVERY INSTRUCTIONS / CUSTOMER REQUESTS */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-emerald-600" />
-              <span>3. Ghi chú (Notes)</span>
+              <span>3. Ghi chú & Dặn dò (Notes & Instructions)</span>
             </h3>
-            <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-full border border-slate-200">
-              Tùy chọn (Optional)
-            </span>
+            <div className="flex items-center gap-2">
+              <VoiceNoteDictationButton
+                currentValue={notes}
+                onValueChange={(val) => setNotes(val)}
+                buttonLabel="Đọc ghi chú"
+                placeholderPrompt="Nói dặn dò giao hàng (ví dụ: 'Ít ngọt, giao sảnh bảo vệ')..."
+              />
+              <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                Tùy chọn
+              </span>
+            </div>
           </div>
 
           <p className="text-[11px] text-slate-500">
@@ -1662,6 +1824,13 @@ export const CreateOrderScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Voice-to-Text Order Assistant Modal */}
+      <VoiceOrderDictationModal
+        isOpen={showVoiceOrderModal}
+        onClose={() => setShowVoiceOrderModal(false)}
+        onApplyOrder={handleApplyVoiceOrder}
+      />
     </div>
   );
 };

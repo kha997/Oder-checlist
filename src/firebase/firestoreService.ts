@@ -9,7 +9,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from './config';
-import { Order, Customer, Product, CondoLocation, StockLog } from '../types';
+import { Order, Customer, Product, CondoLocation, StockLog, StaffUser, StoreBankConfig } from '../types';
 
 export interface FirebaseSyncCallbacks {
   onOrdersChange?: (orders: Order[]) => void;
@@ -17,6 +17,8 @@ export interface FirebaseSyncCallbacks {
   onProductsChange?: (products: Product[]) => void;
   onCondosChange?: (condos: CondoLocation[]) => void;
   onStockLogsChange?: (stockLogs: StockLog[]) => void;
+  onStaffChange?: (staff: StaffUser[]) => void;
+  onBankConfigChange?: (config: StoreBankConfig) => void;
   onError?: (error: unknown) => void;
 }
 
@@ -152,12 +154,69 @@ export function subscribeToFirebaseCollections(callbacks: FirebaseSyncCallbacks)
     callbacks.onError?.(err);
   }
 
+  // 6. Staff Users (RBAC)
+  try {
+    const staffCol = collection(db, 'users');
+    const unsubStaff = onSnapshot(
+      staffCol,
+      (snapshot) => {
+        const items: StaffUser[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.id && data.name && data.role) {
+            items.push(data as StaffUser);
+          }
+        });
+        if (items.length > 0) {
+          callbacks.onStaffChange?.(items);
+        }
+      },
+      (error) => {
+        callbacks.onError?.(error);
+        handleFirestoreError(error, OperationType.GET, 'users');
+      }
+    );
+    unsubscribers.push(unsubStaff);
+  } catch (err) {
+    callbacks.onError?.(err);
+  }
+
+  // 7. Store Bank Config (VietQR)
+  try {
+    const bankDocRef = doc(db, 'settings', 'bankConfig');
+    const unsubBank = onSnapshot(
+      bankDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callbacks.onBankConfigChange?.(docSnap.data() as StoreBankConfig);
+        }
+      },
+      (error) => {
+        callbacks.onError?.(error);
+        handleFirestoreError(error, OperationType.GET, 'settings/bankConfig');
+      }
+    );
+    unsubscribers.push(unsubBank);
+  } catch (err) {
+    callbacks.onError?.(err);
+  }
+
   return () => {
     unsubscribers.forEach((unsub) => unsub());
   };
 }
 
 // ----------------- Write Operations -----------------
+
+export async function upsertBankConfigFirestore(config: StoreBankConfig): Promise<void> {
+  const path = 'settings/bankConfig';
+  try {
+    const docRef = doc(db, 'settings', 'bankConfig');
+    await setDoc(docRef, sanitizeForFirestore(config), { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
 
 export async function upsertOrderFirestore(order: Order): Promise<void> {
   const path = `orders/${order.id}`;
@@ -229,6 +288,26 @@ export async function addStockLogFirestore(log: StockLog): Promise<void> {
   }
 }
 
+export async function upsertStaffUserFirestore(staff: StaffUser): Promise<void> {
+  const path = `users/${staff.id}`;
+  try {
+    const docRef = doc(db, 'users', staff.id);
+    await setDoc(docRef, sanitizeForFirestore(staff), { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteStaffUserFirestore(staffId: string): Promise<void> {
+  const path = `users/${staffId}`;
+  try {
+    const docRef = doc(db, 'users', staffId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 /**
  * Checks if Firestore collections are empty and optionally seeds current local dataset
  */
@@ -238,6 +317,7 @@ export async function seedLocalDataToFirestoreIfEmpty(data: {
   products: Product[];
   condos: CondoLocation[];
   stockLogs: StockLog[];
+  staffUsers?: StaffUser[];
 }): Promise<void> {
   try {
     const ordersSnap = await getDocs(collection(db, 'orders'));
@@ -277,6 +357,16 @@ export async function seedLocalDataToFirestoreIfEmpty(data: {
       console.log('Seeding initial stock logs to Firestore...');
       for (const l of data.stockLogs) {
         await addStockLogFirestore(l);
+      }
+    }
+
+    if (data.staffUsers && data.staffUsers.length > 0) {
+      const staffSnap = await getDocs(collection(db, 'users'));
+      if (staffSnap.empty) {
+        console.log('Seeding initial staff users to Firestore...');
+        for (const u of data.staffUsers) {
+          await upsertStaffUserFirestore(u);
+        }
       }
     }
   } catch (err) {

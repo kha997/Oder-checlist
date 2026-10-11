@@ -50,7 +50,7 @@ import {
 } from 'lucide-react';
 
 export const ReportScreen: React.FC = () => {
-  const { orders, products, setCurrentScreen } = useApp();
+  const { orders, products, setCurrentScreen, roleConfig, activeStaff } = useApp();
 
   const [dateFilter, setDateFilter] = useState<'today' | 'month' | 'all'>('today');
   const [copied, setCopied] = useState(false);
@@ -62,6 +62,29 @@ export const ReportScreen: React.FC = () => {
   const [exportModalDocType, setExportModalDocType] = useState<ExportDocumentType>('ACCOUNTING_REPORT');
   const [exportModalOrders, setExportModalOrders] = useState<Order[]>([]);
   const [exportModalTitle, setExportModalTitle] = useState<string>('Báo cáo Kế toán Tài chính');
+
+  if (!roleConfig.canViewCostAndProfit) {
+    return (
+      <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-md text-center">
+        <div className="w-14 h-14 bg-purple-50 rounded-2xl border border-purple-200 flex items-center justify-center mx-auto mb-4 text-purple-600">
+          <ShieldCheck className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900 mb-1">
+          Báo cáo Tài chính dành cho Quản trị viên (Admin)
+        </h3>
+        <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+          Dữ liệu doanh thu, giá vốn và lợi nhuận gộp được bảo mật. Tài khoản{' '}
+          <strong>{activeStaff.name}</strong> ({roleConfig.label}) không có quyền xem mục này.
+        </p>
+        <button
+          onClick={() => setCurrentScreen('HOME')}
+          className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+        >
+          <span>Quay lại Trang chủ</span>
+        </button>
+      </div>
+    );
+  }
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);

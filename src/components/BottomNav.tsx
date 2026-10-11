@@ -4,7 +4,7 @@ import { ScreenType } from '../types';
 import { Home, PlusCircle, Bike, Wallet, BarChart3, Boxes, History } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
-  const { currentScreen, setCurrentScreen, orders } = useApp();
+  const { currentScreen, setCurrentScreen, orders, canAccessScreen } = useApp();
 
   const pendingDeliveryCount = orders.filter(
     (o) => o.status === 'ACTIVE' && o.deliveryStatus !== 'DELIVERED'
@@ -14,7 +14,7 @@ export const BottomNav: React.FC = () => {
     (o) => o.status === 'ACTIVE' && o.paymentStatus === 'UNPAID'
   ).length;
 
-  const navItems: { screen: ScreenType; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
+  const allNavItems: { screen: ScreenType; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
     { screen: 'HOME', label: 'Trang chủ', icon: Home },
     { screen: 'CREATE_ORDER', label: 'Tạo đơn', icon: PlusCircle },
     { screen: 'DELIVERY', label: 'Giao hàng', icon: Bike, badge: pendingDeliveryCount },
@@ -24,10 +24,12 @@ export const BottomNav: React.FC = () => {
     { screen: 'REPORT', label: 'Báo cáo', icon: BarChart3 },
   ];
 
+  const visibleNavItems = allNavItems.filter((item) => canAccessScreen(item.screen));
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg">
       <div className="max-w-2xl mx-auto px-1 py-1 flex items-center justify-around">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentScreen === item.screen;
           return (

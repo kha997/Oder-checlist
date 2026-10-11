@@ -1,4 +1,4 @@
-import { Product, Customer, CondoLocation, Order, StockLog } from '../types';
+import { Product, Customer, CondoLocation, Order, StockLog, StaffUser } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -380,6 +380,50 @@ export const INITIAL_STOCK_LOGS: StockLog[] = [
   },
 ];
 
+export const INITIAL_STAFF_USERS: StaffUser[] = [
+  {
+    id: 'staff-admin-1',
+    name: 'Hoa (Chủ quán)',
+    role: 'ADMIN',
+    email: 'khafibo@gmail.com',
+    phone: '0901234567',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'staff-kitchen-1',
+    name: 'Bếp Trưởng Tuấn',
+    role: 'KITCHEN',
+    phone: '0912345678',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'staff-shipper-1',
+    name: 'Minh (Shipper)',
+    role: 'SHIPPER',
+    phone: '0933221100',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'staff-shipper-2',
+    name: 'Tài (Giao hàng)',
+    role: 'SHIPPER',
+    phone: '0944556677',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'staff-cashier-1',
+    name: 'An (Thu ngân)',
+    role: 'CASHIER',
+    phone: '0955667788',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+];
+
 export const OPERATOR_USERS = [
   'Minh (Shipper)',
   'Hoa (Chủ quán)',
@@ -394,6 +438,9 @@ export const STORAGE_KEYS = {
   ORDERS: 'oder_checklist_orders_v1',
   STOCK_LOGS: 'oder_checklist_stock_logs_v1',
   CURRENT_USER: 'oder_checklist_user_v1',
+  STAFF_USERS: 'oder_checklist_staff_v1',
+  ACTIVE_STAFF_ID: 'oder_checklist_active_staff_id_v1',
+  BANK_CONFIG: 'oder_checklist_bank_config_v1',
   NOTIFICATIONS: 'oder_checklist_notifications_v1',
   SOUND_ENABLED: 'oder_checklist_sound_enabled_v1',
   SCHEDULER_CONFIG: 'oder_checklist_scheduler_config_v1',

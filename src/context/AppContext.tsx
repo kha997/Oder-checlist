@@ -19,6 +19,13 @@ import {
   DEFAULT_SCHEDULER_CONFIG,
   getOrderPrice,
   getOrderCost,
+  UserRole,
+  RoleConfig,
+  ROLE_CONFIGS,
+  StaffUser,
+  StoreBankConfig,
+  DEFAULT_BANK_CONFIG,
+  CustomerDebtSummary,
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -26,6 +33,7 @@ import {
   INITIAL_CUSTOMERS,
   INITIAL_ORDERS,
   INITIAL_STOCK_LOGS,
+  INITIAL_STAFF_USERS,
   OPERATOR_USERS,
   STORAGE_KEYS,
   loadFromStorage,
@@ -49,6 +57,9 @@ import {
   upsertProductFirestore,
   upsertCondoFirestore,
   addStockLogFirestore,
+  upsertStaffUserFirestore,
+  deleteStaffUserFirestore,
+  upsertBankConfigFirestore,
   seedLocalDataToFirestoreIfEmpty,
 } from '../firebase/firestoreService';
 
@@ -57,7 +68,23 @@ interface AppContextType {
   currentScreen: ScreenType;
   setCurrentScreen: (screen: ScreenType) => void;
 
-  // Current Operator / Shipper User
+  // VietQR & Store Bank Configuration
+  bankConfig: StoreBankConfig;
+  updateBankConfig: (updates: Partial<StoreBankConfig>) => void;
+
+  // Staff & Role-Based Access Control (RBAC)
+  staffUsers: StaffUser[];
+  activeStaff: StaffUser;
+  currentRole: UserRole;
+  roleConfig: RoleConfig;
+  setActiveStaffId: (staffId: string) => void;
+  addStaffUser: (user: Omit<StaffUser, 'id' | 'createdAt'>) => void;
+  updateStaffUser: (id: string, updates: Partial<StaffUser>) => void;
+  deleteStaffUser: (id: string) => void;
+  canAccessScreen: (screen: ScreenType) => boolean;
+  isRole: (role: UserRole | UserRole[]) => boolean;
+
+  // Current Operator / Shipper User (Backwards compatibility)
   currentUser: string;
   setCurrentUser: (user: string) => void;
   availableUsers: string[];
@@ -106,6 +133,7 @@ interface AppContextType {
   markDelivered: (orderId: string, proofImage?: string, note?: string) => void;
   markMultipleDelivered: (orderIds: string[]) => void;
   markPaid: (orderId: string, method: PaymentMethod) => void;
+  markMultiplePaid: (orderIds: string[], method: PaymentMethod, note?: string) => void;
   attachReceiptToOrder: (orderId: string, receiptImageUrl: string, note?: string) => void;
   cancelOrder: (orderId: string) => void;
   restoreOrder: (orderId: string) => void;
@@ -146,6 +174,8 @@ interface AppContextType {
   deleteCustomer: (id: string) => void;
   selectedCustomerForOrder: Customer | null;
   setSelectedCustomerForOrder: (customer: Customer | null) => void;
+  calculateCustomerDebt: (cust: Customer) => CustomerDebtSummary;
+  recordCustomerDebtReminder: (customerId: string, channel: 'ZALO' | 'SMS') => void;
 
   // Global Search
   globalSearchQuery: string;
@@ -169,9 +199,73 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('HOME');
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
-  const [currentUser, setCurrentUser] = useState<string>(() =>
-    loadFromStorage(STORAGE_KEYS.CURRENT_USER, OPERATOR_USERS[0])
+
+  // Staff and Role-Based Access Control State
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>(() =>
+    loadFromStorage<StaffUser[]>(STORAGE_KEYS.STAFF_USERS, INITIAL_STAFF_USERS)
   );
+  const [activeStaffId, setActiveStaffIdState] = useState<string>(() =>
+    loadFromStorage<string>(STORAGE_KEYS.ACTIVE_STAFF_ID, INITIAL_STAFF_USERS[0].id)
+  );
+
+  // Store Bank Configuration (VietQR)
+  const [bankConfig, setBankConfig] = useState<StoreBankConfig>(() =>
+    loadFromStorage<StoreBankConfig>(STORAGE_KEYS.BANK_CONFIG, DEFAULT_BANK_CONFIG)
+  );
+
+  // Synchronize bankConfig to local storage
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.BANK_CONFIG, bankConfig);
+  }, [bankConfig]);
+
+  const updateBankConfig = (updates: Partial<StoreBankConfig>) => {
+    setBankConfig((prev) => {
+      const updated = { ...prev, ...updates };
+      if (firebaseUser) {
+        upsertBankConfigFirestore(updated).catch((err) =>
+          console.error('Error saving bank config to Firestore:', err)
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Synchronize staff to local storage
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.STAFF_USERS, staffUsers);
+  }, [staffUsers]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.ACTIVE_STAFF_ID, activeStaffId);
+  }, [activeStaffId]);
+
+  const activeStaff: StaffUser = useMemo(() => {
+    return (
+      staffUsers.find((s) => s.id === activeStaffId) ||
+      staffUsers[0] ||
+      INITIAL_STAFF_USERS[0]
+    );
+  }, [staffUsers, activeStaffId]);
+
+  const currentRole: UserRole = activeStaff.role;
+  const roleConfig: RoleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.ADMIN;
+  const currentUser: string = activeStaff.name;
+  const availableUsers: string[] = useMemo(() => staffUsers.map((s) => s.name), [staffUsers]);
+
+  const setActiveStaffId = (staffId: string) => {
+    setActiveStaffIdState(staffId);
+    const found = staffUsers.find((s) => s.id === staffId);
+    if (found) {
+      saveToStorage(STORAGE_KEYS.CURRENT_USER, found.name);
+    }
+  };
+
+  const setCurrentUser = (userName: string) => {
+    const found = staffUsers.find((s) => s.name === userName);
+    if (found) {
+      setActiveStaffIdState(found.id);
+    }
+  };
 
   const [rawProducts, setRawProducts] = useState<Omit<Product, 'quantitySold' | 'currentStock'>[]>(() => {
     const loaded = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
@@ -419,12 +513,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       for (const l of stockLogs) {
         await addStockLogFirestore(l);
       }
+      for (const s of staffUsers) {
+        await upsertStaffUserFirestore(s);
+      }
+      await upsertBankConfigFirestore(bankConfig);
       setLastCloudSyncTime(new Date().toISOString());
       setCloudSyncStatus('synced');
     } catch (err) {
       setCloudSyncStatus('error');
       throw err;
     }
+  };
+
+  // Staff CRUD actions
+  const addStaffUser = (userData: Omit<StaffUser, 'id' | 'createdAt'>) => {
+    const newStaff: StaffUser = {
+      ...userData,
+      id: `staff-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setStaffUsers((prev) => [...prev, newStaff]);
+    if (firebaseUser) {
+      upsertStaffUserFirestore(newStaff).catch((err) =>
+        console.error('Error saving staff to Firestore:', err)
+      );
+    }
+  };
+
+  const updateStaffUser = (id: string, updates: Partial<StaffUser>) => {
+    setStaffUsers((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const updated = { ...s, ...updates };
+        if (firebaseUser) {
+          upsertStaffUserFirestore(updated).catch((err) =>
+            console.error('Error updating staff in Firestore:', err)
+          );
+        }
+        return updated;
+      })
+    );
+  };
+
+  const deleteStaffUser = (id: string) => {
+    setStaffUsers((prev) => prev.filter((s) => s.id !== id));
+    if (firebaseUser) {
+      deleteStaffUserFirestore(id).catch((err) =>
+        console.error('Error deleting staff from Firestore:', err)
+      );
+    }
+    if (activeStaffId === id) {
+      const remaining = staffUsers.filter((s) => s.id !== id);
+      if (remaining.length > 0) {
+        setActiveStaffIdState(remaining[0].id);
+      }
+    }
+  };
+
+  const canAccessScreen = (screen: ScreenType): boolean => {
+    return roleConfig.allowedScreens.includes(screen);
+  };
+
+  const isRole = (role: UserRole | UserRole[]): boolean => {
+    if (Array.isArray(role)) {
+      return role.includes(currentRole);
+    }
+    return currentRole === role;
   };
 
   // Real-time Firestore synchronization listener
@@ -442,7 +596,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             products,
             condos,
             stockLogs,
+            staffUsers,
           });
+
+          // Check if admin
+          if (user.email === 'khafibo@gmail.com') {
+            const adminStaff = staffUsers.find(
+              (s) => s.email === 'khafibo@gmail.com' || s.role === 'ADMIN'
+            );
+            if (adminStaff) {
+              setActiveStaffIdState(adminStaff.id);
+            }
+          }
 
           unsubSnapshot = subscribeToFirebaseCollections({
             onOrdersChange: (remoteOrders) => {
@@ -480,6 +645,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             onStockLogsChange: (remoteLogs) => {
               if (remoteLogs && remoteLogs.length > 0) {
                 setStockLogs(remoteLogs);
+              }
+            },
+            onStaffChange: (remoteStaff) => {
+              if (remoteStaff && remoteStaff.length > 0) {
+                setStaffUsers(remoteStaff);
+              }
+            },
+            onBankConfigChange: (remoteBank) => {
+              if (remoteBank && remoteBank.bankBin && remoteBank.accountNumber) {
+                setBankConfig(remoteBank);
               }
             },
             onError: (err) => {
@@ -841,6 +1016,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const markMultiplePaid = (orderIds: string[], method: PaymentMethod, note?: string) => {
+    if (!orderIds || orderIds.length === 0) return;
+    const nowIso = new Date().toISOString();
+    const idSet = new Set(orderIds);
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (!idSet.has(ord.id)) return ord;
+        return {
+          ...ord,
+          paymentStatus: 'PAID',
+          paymentMethod: method,
+          paidAmount: ord.totalAmount,
+          paymentTime: nowIso,
+          paidConfirmedBy: currentUser,
+          internalNote: note
+            ? ord.internalNote
+              ? `${ord.internalNote} • ${note}`
+              : note
+            : ord.internalNote,
+        };
+      })
+    );
+  };
+
   const cancelOrder = (orderId: string) => {
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? { ...ord, status: 'CANCELLED' } : ord))
@@ -1122,6 +1321,69 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCustomers((prev) => prev.filter((c) => c.id !== id));
   };
 
+  const calculateCustomerDebt = (cust: Customer): CustomerDebtSummary => {
+    const custPhone = cust.phone ? cust.phone.trim() : '';
+    const custNameLower = cust.name ? cust.name.trim().toLowerCase() : '';
+
+    const custOrders = orders.filter((o) => {
+      if (o.status !== 'ACTIVE') return false;
+      const phoneMatch = custPhone && o.customerPhone && o.customerPhone.trim() === custPhone;
+      const nameMatch = o.customerName && o.customerName.trim().toLowerCase() === custNameLower;
+      return Boolean(phoneMatch || nameMatch);
+    });
+
+    const unpaidOrders = custOrders
+      .filter((o) => o.paymentStatus === 'UNPAID')
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); // Oldest first
+
+    const paidOrders = custOrders
+      .filter((o) => o.paymentStatus === 'PAID')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); // Newest first
+
+    const totalDebt = unpaidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const totalSpent = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+    const oldestUnpaidOrder = unpaidOrders[0];
+    let daysSinceOldestDebt = 0;
+    if (oldestUnpaidOrder) {
+      const diffMs = Date.now() - new Date(oldestUnpaidOrder.createdAt).getTime();
+      daysSinceOldestDebt = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    const isOverdue = daysSinceOldestDebt >= 7;
+    const isOverLimit = Boolean(cust.debtLimit && cust.debtLimit > 0 && totalDebt > cust.debtLimit);
+
+    return {
+      customer: cust,
+      unpaidOrders,
+      paidOrders,
+      totalDebt,
+      totalSpent,
+      totalOrdersCount: custOrders.length,
+      unpaidCount: unpaidOrders.length,
+      oldestUnpaidOrder,
+      daysSinceOldestDebt,
+      isOverdue,
+      isOverLimit,
+      lastReminderAt: cust.lastReminderAt,
+      reminderCount: cust.reminderCount || 0,
+    };
+  };
+
+  const recordCustomerDebtReminder = (customerId: string, channel: 'ZALO' | 'SMS') => {
+    const now = new Date().toISOString();
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id !== customerId) return c;
+        return {
+          ...c,
+          lastReminderAt: now,
+          reminderCount: (c.reminderCount || 0) + 1,
+        };
+      })
+    );
+  };
+
   // Reset to Demo Data
   const resetToDemoData = () => {
     localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
@@ -1130,6 +1392,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem(STORAGE_KEYS.ORDERS);
     localStorage.removeItem(STORAGE_KEYS.STOCK_LOGS);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    localStorage.removeItem(STORAGE_KEYS.STAFF_USERS);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_STAFF_ID);
+
+    setStaffUsers(INITIAL_STAFF_USERS);
+    setActiveStaffIdState(INITIAL_STAFF_USERS[0].id);
 
     setRawProducts(
       INITIAL_PRODUCTS.map((p) => ({
@@ -1155,9 +1422,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         currentScreen,
         setCurrentScreen,
+        bankConfig,
+        updateBankConfig,
+        staffUsers,
+        activeStaff,
+        currentRole,
+        roleConfig,
+        setActiveStaffId,
+        addStaffUser,
+        updateStaffUser,
+        deleteStaffUser,
+        canAccessScreen,
+        isRole,
         currentUser,
         setCurrentUser,
-        availableUsers: OPERATOR_USERS,
+        availableUsers,
         products,
         customers,
         condos,
@@ -1176,6 +1455,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         markDelivered,
         markMultipleDelivered,
         markPaid,
+        markMultiplePaid,
         attachReceiptToOrder,
         cancelOrder,
         restoreOrder,
@@ -1202,6 +1482,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteCustomer,
         selectedCustomerForOrder,
         setSelectedCustomerForOrder,
+        calculateCustomerDebt,
+        recordCustomerDebtReminder,
         globalSearchQuery,
         setGlobalSearchQuery,
         resetToDemoData,

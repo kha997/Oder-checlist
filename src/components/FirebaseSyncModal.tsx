@@ -33,6 +33,7 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, on
     products,
     condos,
     stockLogs,
+    staffUsers,
     signInWithGoogle,
     signOutGoogle,
     syncLocalToCloud,
@@ -179,7 +180,7 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, on
               <Database className="w-3.5 h-3.5 text-slate-500" />
               Dữ liệu được bảo vệ & đồng bộ:
             </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center">
                 <span className="text-[10px] text-slate-500 block">Đơn hàng</span>
                 <span className="text-lg font-bold text-slate-800">{orders.length}</span>
@@ -189,12 +190,16 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, on
                 <span className="text-lg font-bold text-slate-800">{customers.length}</span>
               </div>
               <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center">
-                <span className="text-[10px] text-slate-500 block">Món hàng / Menu</span>
+                <span className="text-[10px] text-slate-500 block">Menu món</span>
                 <span className="text-lg font-bold text-slate-800">{products.length}</span>
               </div>
               <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center">
                 <span className="text-[10px] text-slate-500 block">Lịch sử kho</span>
                 <span className="text-lg font-bold text-slate-800">{stockLogs.length}</span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center">
+                <span className="text-[10px] text-slate-500 block">Nhân sự (RBAC)</span>
+                <span className="text-lg font-bold text-emerald-700">{staffUsers.length}</span>
               </div>
             </div>
           </div>

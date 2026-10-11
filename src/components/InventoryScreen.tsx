@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const InventoryScreen: React.FC = () => {
-  const { products, addProduct, updateProduct, addStockReceived, stockLogs, setCurrentScreen } = useApp();
+  const { products, addProduct, updateProduct, addStockReceived, stockLogs, setCurrentScreen, roleConfig, activeStaff } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRestockModal, setShowRestockModal] = useState<Product | null>(null);
@@ -140,15 +140,17 @@ export const InventoryScreen: React.FC = () => {
       </div>
 
       {/* Action Bar */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex-1 py-3 px-4 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-sm flex items-center justify-center gap-2"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>+ THÊM SẢN PHẨM MỚI</span>
-        </button>
-      </div>
+      {roleConfig.canManageProducts && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex-1 py-3 px-4 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-sm flex items-center justify-center gap-2"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>+ THÊM SẢN PHẨM MỚI</span>
+          </button>
+        </div>
+      )}
 
       {!showLogs ? (
         /* PRODUCT LIST WITH ALL INVENTORY COLUMNS */
@@ -175,20 +177,28 @@ export const InventoryScreen: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => openEditModal(prod)}
-                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"
-                      title="Sửa thông tin sản phẩm"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setShowRestockModal(prod)}
-                      className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold border border-teal-200 flex items-center gap-1 active:scale-95"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Nhập hàng</span>
-                    </button>
+                    {roleConfig.canAdjustStock ? (
+                      <>
+                        <button
+                          onClick={() => openEditModal(prod)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"
+                          title="Sửa thông tin sản phẩm"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setShowRestockModal(prod)}
+                          className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold border border-teal-200 flex items-center gap-1 active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Nhập hàng</span>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                        Xem tồn kho
+                      </span>
+                    )}
                   </div>
                 </div>
 

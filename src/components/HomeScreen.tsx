@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
 import { QuickActionsFloatingMenu } from './QuickActionsFloatingMenu';
@@ -7,6 +7,7 @@ import { ExportOrderReportModal } from './ExportOrderReportModal';
 import { PrintManifestModal } from './PrintManifestModal';
 import { Order, getOrderTagColor } from '../types';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
+import { removeVietnameseTones } from '../utils/searchHelper';
 import {
   PlusCircle,
   Truck,
@@ -49,12 +50,25 @@ export const HomeScreen: React.FC = () => {
     triggerRecurringOrderInstance,
     toggleRecurringSchedule,
     schedulerConfig,
+    roleConfig,
+    currentRole,
+    activeStaff,
+    globalSearchQuery,
+    setGlobalSearchQuery,
   } = useApp();
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   // Global Search & Order Filtering
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(globalSearchQuery || '');
+
+  // Keep in sync with globalSearchQuery across screens
+  useEffect(() => {
+    if (globalSearchQuery !== undefined && globalSearchQuery !== searchQuery) {
+      setSearchQuery(globalSearchQuery);
+    }
+  }, [globalSearchQuery]);
+
   const [selectedStatusTab, setSelectedStatusTab] = useState<
     'ALL' | 'PENDING' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'UNPAID' | 'RECURRING'
   >('ALL');
@@ -122,17 +136,39 @@ export const HomeScreen: React.FC = () => {
       list = recurringOrders;
     }
 
-    // Global Search
+    // Global Search across Customer Name, Address, Condo Unit, Order ID, and Phone
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (o) =>
-          o.customerName.toLowerCase().includes(q) ||
+      const cleanQ = removeVietnameseTones(searchQuery);
+      const qDigits = q.replace(/[^0-9]/g, '');
+
+      list = list.filter((o) => {
+        const idMatches =
           o.id.toLowerCase().includes(q) ||
-          (o.customerPhone && o.customerPhone.includes(q)) ||
-          o.location.formattedAddress.toLowerCase().includes(q) ||
-          (o.isRecurring && 'định kỳ recurring'.includes(q))
-      );
+          (qDigits.length >= 2 && o.id.replace(/[^0-9]/g, '').includes(qDigits));
+        const nameMatches =
+          o.customerName.toLowerCase().includes(q) ||
+          removeVietnameseTones(o.customerName).includes(cleanQ);
+        const phoneMatches = o.customerPhone && o.customerPhone.includes(qDigits || q);
+        const addr = o.location.formattedAddress.toLowerCase();
+        const cleanAddr = removeVietnameseTones(o.location.formattedAddress);
+        const condoMatches =
+          (o.location.condoName && removeVietnameseTones(o.location.condoName).includes(cleanQ)) ||
+          (o.location.block && o.location.block.toLowerCase().includes(q)) ||
+          (o.location.floor && o.location.floor.includes(qDigits || q)) ||
+          (o.location.unit && o.location.unit.toLowerCase().includes(q));
+        const recurringMatches = o.isRecurring && 'định kỳ recurring'.includes(q);
+
+        return (
+          idMatches ||
+          nameMatches ||
+          phoneMatches ||
+          addr.includes(q) ||
+          cleanAddr.includes(cleanQ) ||
+          condoMatches ||
+          recurringMatches
+        );
+      });
     }
 
     return list;
@@ -164,10 +200,14 @@ export const HomeScreen: React.FC = () => {
           <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
             <p className="text-[10px] text-slate-500 font-medium">Doanh số (Sales)</p>
             <p className="text-xs sm:text-sm font-extrabold text-slate-900 mt-0.5 truncate">
-              {formatVND(totalSales)}
+              {roleConfig.canViewCostAndProfit ? formatVND(totalSales) : '••• (Bảo mật)'}
             </p>
           </div>
-          <div className="bg-amber-50 rounded-xl p-2.5 border border-amber-100">
+          <div
+            onClick={() => setCurrentScreen('UNPAID')}
+            className="bg-amber-50 hover:bg-amber-100/80 cursor-pointer rounded-xl p-2.5 border border-amber-200 transition group active:scale-98"
+            title="Nhấn để mở danh sách đơn cần thu tiền & Sổ công nợ"
+          >
             <p className="text-[10px] text-amber-700 font-medium">Chưa thu (Unpaid)</p>
             <p className="text-xs sm:text-sm font-extrabold text-amber-800 mt-0.5 truncate">
               {formatVND(totalUnpaidAmount)}
@@ -273,13 +313,19 @@ export const HomeScreen: React.FC = () => {
             type="text"
             placeholder="Tìm kiếm đơn hàng theo tên khách hàng hoặc mã đơn (ORD-...)..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setGlobalSearchQuery(e.target.value);
+            }}
             className="w-full pl-9 pr-9 py-2.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-slate-800 placeholder:text-slate-400 transition"
           />
           <Search className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchQuery('');
+                setGlobalSearchQuery('');
+              }}
               className="absolute right-2.5 top-2.5 p-1 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 transition"
               title="Xóa tìm kiếm"
             >
@@ -943,29 +989,34 @@ export const HomeScreen: React.FC = () => {
           <ArrowRight className="w-5 h-5 text-indigo-300 group-hover:translate-x-1 transition-transform shrink-0" />
         </button>
 
-        {/* 7. CUSTOMERS MANAGEMENT */}
+        {/* 7. CUSTOMERS & DEBT LEDGER MANAGEMENT */}
         <button
           onClick={() => setCurrentScreen('CUSTOMERS')}
-          className="w-full text-left bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.98] transition-all rounded-2xl p-4 sm:p-5 text-white shadow-md shadow-teal-800/20 flex items-center justify-between group"
+          className="w-full text-left bg-gradient-to-r from-indigo-800 via-indigo-900 to-slate-900 hover:from-indigo-900 hover:to-slate-950 active:scale-[0.98] transition-all rounded-2xl p-4 sm:p-5 text-white shadow-md shadow-indigo-950/20 flex items-center justify-between group border border-indigo-700/50"
         >
           <div className="flex items-center gap-4">
             <div className="w-13 h-13 rounded-2xl bg-white/15 flex items-center justify-center shrink-0 border border-white/20">
-              <Users className="w-7 h-7 text-emerald-200" />
+              <Users className="w-7 h-7 text-indigo-200" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-black tracking-wide uppercase">KHÁCH HÀNG & BIỂU ĐỒ</span>
-                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-bold">CUSTOMERS</span>
-                <span className="text-xs bg-white text-emerald-800 px-2 py-0.5 rounded-full font-black">
-                  {customers.length} khách lưu
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg font-black tracking-wide uppercase">SỔ CÔNG NỢ & KHÁCH QUEN</span>
+                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-bold">DEBT LEDGER</span>
+                <span className="text-xs bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-black">
+                  {customers.length} khách
                 </span>
+                {totalUnpaidAmount > 0 && (
+                  <span className="text-xs bg-rose-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse">
+                    Nợ: {formatVND(totalUnpaidAmount)}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-emerald-100 mt-1 font-medium">
-                Lịch sử mua hàng & Biểu đồ chi tiêu theo từng khách
+              <p className="text-xs text-indigo-200 mt-1 font-medium">
+                Sổ theo dõi nợ, hạn mức tín dụng, gửi bảng đối soát Zalo 1-chạm & lưu vị trí căn hộ
               </p>
             </div>
           </div>
-          <ArrowRight className="w-5 h-5 text-emerald-200 group-hover:translate-x-1 transition-transform shrink-0" />
+          <ArrowRight className="w-5 h-5 text-indigo-300 group-hover:translate-x-1 transition-transform shrink-0" />
         </button>
       </div>
 

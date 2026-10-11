@@ -1,7 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, LocationType } from '../types';
+import { Customer, LocationType, Order } from '../types';
 import { formatVND } from '../utils/storage';
+import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
+import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';
+import { CustomerDebtReminderModal } from './CustomerDebtReminderModal';
 import {
   ArrowLeft,
   Users,
@@ -19,6 +22,13 @@ import {
   Check,
   CheckCircle2,
   AlertTriangle,
+  Receipt,
+  Wallet,
+  Crown,
+  MessageCircle,
+  AlertCircle,
+  Clock,
+  BellRing,
 } from 'lucide-react';
 
 export const CustomersScreen: React.FC = () => {
@@ -31,11 +41,18 @@ export const CustomersScreen: React.FC = () => {
     deleteCustomer,
     setSelectedCustomerForOrder,
     setCurrentScreen,
+    calculateCustomerDebt,
   } = useApp();
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'condo' | 'external'>('ALL');
+  const [debtFilter, setDebtFilter] = useState<'ALL' | 'HAS_DEBT' | 'OVERDUE' | 'OVER_LIMIT'>('ALL');
+
+  // Debt & Ledger Modals State
+  const [selectedCustomerForLedger, setSelectedCustomerForLedger] = useState<Customer | null>(null);
+  const [selectedCustomerForZalo, setSelectedCustomerForZalo] = useState<Customer | null>(null);
+  const [selectedCustomerForReminder, setSelectedCustomerForReminder] = useState<Customer | null>(null);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -51,6 +68,9 @@ export const CustomersScreen: React.FC = () => {
   const [unit, setUnit] = useState('');
   const [externalAddress, setExternalAddress] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
+  const [debtLimitInput, setDebtLimitInput] = useState('');
+  const [isVipInput, setIsVipInput] = useState(false);
+  const [notesInput, setNotesInput] = useState('');
   const [formError, setFormError] = useState('');
 
   // Delete Confirm State
@@ -66,6 +86,48 @@ export const CustomersScreen: React.FC = () => {
 
   const selectedCondo = condos.find((c) => c.id === condoId) || condos[0];
 
+  // Precompute debt for all customers
+  const customerDebtMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof calculateCustomerDebt>>();
+    for (const c of customers) {
+      map.set(c.id, calculateCustomerDebt(c));
+    }
+    return map;
+  }, [customers, orders, calculateCustomerDebt]);
+
+  // Aggregate debt metrics
+  const totalAllDebt = useMemo(() => {
+    let sum = 0;
+    for (const debt of customerDebtMap.values()) {
+      sum += debt.totalDebt;
+    }
+    return sum;
+  }, [customerDebtMap]);
+
+  const debtorCount = useMemo(() => {
+    let cnt = 0;
+    for (const debt of customerDebtMap.values()) {
+      if (debt.totalDebt > 0) cnt++;
+    }
+    return cnt;
+  }, [customerDebtMap]);
+
+  const overdueDebtorCount = useMemo(() => {
+    let cnt = 0;
+    for (const debt of customerDebtMap.values()) {
+      if (debt.isOverdue) cnt++;
+    }
+    return cnt;
+  }, [customerDebtMap]);
+
+  const overLimitCount = useMemo(() => {
+    let cnt = 0;
+    for (const debt of customerDebtMap.values()) {
+      if (debt.isOverLimit) cnt++;
+    }
+    return cnt;
+  }, [customerDebtMap]);
+
   // Open Add Modal
   const handleOpenAddModal = () => {
     setEditingCustomer(null);
@@ -78,6 +140,9 @@ export const CustomersScreen: React.FC = () => {
     setUnit('');
     setExternalAddress('');
     setDeliveryNote('');
+    setDebtLimitInput('');
+    setIsVipInput(false);
+    setNotesInput('');
     setFormError('');
     setShowModal(true);
   };
@@ -100,6 +165,9 @@ export const CustomersScreen: React.FC = () => {
       setExternalAddress(c.externalAddress || '');
     }
     setDeliveryNote(c.deliveryNote || '');
+    setDebtLimitInput(c.debtLimit ? String(c.debtLimit) : '');
+    setIsVipInput(c.isVip || false);
+    setNotesInput(c.notes || '');
     setFormError('');
     setShowModal(true);
   };
@@ -126,6 +194,10 @@ export const CustomersScreen: React.FC = () => {
       }
     }
 
+    const parsedLimit = debtLimitInput.trim()
+      ? parseInt(debtLimitInput.replace(/\D/g, ''), 10)
+      : undefined;
+
     if (editingCustomer) {
       // Update
       const updated: Customer = {
@@ -139,6 +211,9 @@ export const CustomersScreen: React.FC = () => {
         unit: locationType === 'condo' ? unit.trim() : undefined,
         externalAddress: locationType === 'external' ? externalAddress.trim() : undefined,
         deliveryNote: deliveryNote.trim() || undefined,
+        debtLimit: parsedLimit,
+        isVip: isVipInput,
+        notes: notesInput.trim() || undefined,
       };
       updateCustomer(updated);
       showToast(`Đã cập nhật thông tin khách "${updated.name}"`);
@@ -154,6 +229,9 @@ export const CustomersScreen: React.FC = () => {
         unit: locationType === 'condo' ? unit.trim() : undefined,
         externalAddress: locationType === 'external' ? externalAddress.trim() : undefined,
         deliveryNote: deliveryNote.trim() || undefined,
+        debtLimit: parsedLimit,
+        isVip: isVipInput,
+        notes: notesInput.trim() || undefined,
       });
       showToast(`Đã lưu khách quen mới "${name.trim()}"`);
     }
@@ -181,6 +259,18 @@ export const CustomersScreen: React.FC = () => {
       if (filterType !== 'ALL' && c.defaultLocationType !== filterType) {
         return false;
       }
+
+      const debt = customerDebtMap.get(c.id);
+      if (debtFilter === 'HAS_DEBT' && (!debt || debt.totalDebt <= 0)) {
+        return false;
+      }
+      if (debtFilter === 'OVERDUE' && (!debt || !debt.isOverdue)) {
+        return false;
+      }
+      if (debtFilter === 'OVER_LIMIT' && (!debt || !debt.isOverLimit)) {
+        return false;
+      }
+
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
       const nameMatch = c.name.toLowerCase().includes(q);
@@ -205,7 +295,7 @@ export const CustomersScreen: React.FC = () => {
         combinedUnit.includes(q)
       );
     });
-  }, [customers, filterType, searchQuery]);
+  }, [customers, filterType, debtFilter, searchQuery, customerDebtMap]);
 
   // Order stats per customer
   const getCustomerOrderStats = (cust: Customer) => {
@@ -241,11 +331,11 @@ export const CustomersScreen: React.FC = () => {
 
         <div className="text-center">
           <h2 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center justify-center gap-1.5">
-            <Users className="w-5 h-5 text-emerald-600" />
-            <span>KHÁCH QUEN ĐÃ LƯU</span>
+            <Users className="w-5 h-5 text-indigo-600" />
+            <span>SỔ CÔNG NỢ & KHÁCH QUEN</span>
           </h2>
           <p className="text-[10px] text-slate-500 font-medium">
-            Lưu sẵn địa chỉ Block - Tầng - Căn để lên đơn 1 chạm
+            Quản lý công nợ, đối soát Zalo & lưu địa chỉ giao 1 chạm
           </p>
         </div>
 
@@ -258,23 +348,90 @@ export const CustomersScreen: React.FC = () => {
         </button>
       </div>
 
-      {/* Quick Stat Tiles */}
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs">
-          <span className="text-[10px] font-bold text-slate-400 uppercase">Tổng khách lưu</span>
-          <p className="text-xl font-black text-slate-800 mt-0.5 font-mono">{customers.length}</p>
+      {/* Debt & Customer Overview Hero Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-xl border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Receipt className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 block">
+                Tổng Hợp Công Nợ Khách Hàng
+              </span>
+              <p className="text-xl sm:text-2xl font-black font-mono text-white">
+                {formatVND(totalAllDebt)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setDebtFilter(debtFilter === 'HAS_DEBT' ? 'ALL' : 'HAS_DEBT')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                debtFilter === 'HAS_DEBT'
+                  ? 'bg-rose-500 text-white shadow-md'
+                  : 'bg-white/10 hover:bg-white/20 text-rose-200 border border-rose-400/30'
+              }`}
+            >
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>{debtorCount} khách đang nợ</span>
+            </button>
+
+            {overdueDebtorCount > 0 && (
+              <button
+                onClick={() => setDebtFilter(debtFilter === 'OVERDUE' ? 'ALL' : 'OVERDUE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  debtFilter === 'OVERDUE'
+                    ? 'bg-amber-500 text-white shadow-md'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/40 hover:bg-amber-500/30'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>{overdueDebtorCount} nợ quá hạn</span>
+              </button>
+            )}
+
+            {overLimitCount > 0 && (
+              <button
+                onClick={() => setDebtFilter(debtFilter === 'OVER_LIMIT' ? 'ALL' : 'OVER_LIMIT')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  debtFilter === 'OVER_LIMIT'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'bg-purple-500/20 text-purple-300 border border-purple-400/40 hover:bg-purple-500/30'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{overLimitCount} vượt hạn mức</span>
+              </button>
+            )}
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs">
-          <span className="text-[10px] font-bold text-blue-600 uppercase">Khách chung cư</span>
-          <p className="text-xl font-black text-blue-700 mt-0.5 font-mono">
-            {customers.filter((c) => c.defaultLocationType === 'condo').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs">
-          <span className="text-[10px] font-bold text-indigo-600 uppercase">Khách ngoài</span>
-          <p className="text-xl font-black text-indigo-700 mt-0.5 font-mono">
-            {customers.filter((c) => c.defaultLocationType === 'external').length}
-          </p>
+
+        {/* 4 Mini Stat Blocks */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs pt-1 border-t border-slate-800">
+          <div className="bg-white/5 rounded-2xl p-2 border border-white/5">
+            <span className="text-[10px] text-slate-400 block font-medium">Tổng khách lưu</span>
+            <p className="text-base font-black font-mono text-white mt-0.5">{customers.length}</p>
+          </div>
+          <div className="bg-white/5 rounded-2xl p-2 border border-white/5">
+            <span className="text-[10px] text-blue-300 block font-medium">Khách chung cư</span>
+            <p className="text-base font-black font-mono text-blue-200 mt-0.5">
+              {customers.filter((c) => c.defaultLocationType === 'condo').length}
+            </p>
+          </div>
+          <div className="bg-white/5 rounded-2xl p-2 border border-white/5">
+            <span className="text-[10px] text-emerald-300 block font-medium">Khách VIP</span>
+            <p className="text-base font-black font-mono text-emerald-200 mt-0.5">
+              {customers.filter((c) => c.isVip).length}
+            </p>
+          </div>
+          <div className="bg-white/5 rounded-2xl p-2 border border-white/5">
+            <span className="text-[10px] text-indigo-300 block font-medium">Khách ngoài</span>
+            <p className="text-base font-black font-mono text-indigo-200 mt-0.5">
+              {customers.filter((c) => c.defaultLocationType === 'external').length}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -286,7 +443,7 @@ export const CustomersScreen: React.FC = () => {
             placeholder="Tìm theo tên khách, số ĐT, căn hộ (e.g. B-20-10, Tuấn, Mai)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-9 py-2 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder:text-slate-400 transition"
+            className="w-full pl-9 pr-9 py-2 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-800 placeholder:text-slate-400 transition"
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           {searchQuery && (
@@ -299,22 +456,77 @@ export const CustomersScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5">
+        {/* Filter Row 1: Debt Filters */}
+        <div className="flex items-center gap-1.5 text-xs flex-wrap">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+            Công nợ:
+          </span>
+          <button
+            onClick={() => setDebtFilter('ALL')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+              debtFilter === 'ALL'
+                ? 'bg-slate-800 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Tất cả
+          </button>
+          <button
+            onClick={() => setDebtFilter('HAS_DEBT')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
+              debtFilter === 'HAS_DEBT'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+            }`}
+          >
+            <Wallet className="w-3 h-3" />
+            <span>Có công nợ ({debtorCount})</span>
+          </button>
+          <button
+            onClick={() => setDebtFilter('OVERDUE')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
+              debtFilter === 'OVERDUE'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+            }`}
+          >
+            <Clock className="w-3 h-3" />
+            <span>Nợ quá hạn &gt;7 ngày ({overdueDebtorCount})</span>
+          </button>
+          {overLimitCount > 0 && (
+            <button
+              onClick={() => setDebtFilter('OVER_LIMIT')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
+                debtFilter === 'OVER_LIMIT'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>Vượt hạn mức ({overLimitCount})</span>
+            </button>
+          )}
+        </div>
+
+        {/* Filter Row 2: Location Type & Clear */}
+        <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+              Vị trí:
+            </span>
             <button
               onClick={() => setFilterType('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition ${
                 filterType === 'ALL'
-                  ? 'bg-slate-800 text-white shadow-xs'
+                  ? 'bg-slate-700 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Tất cả ({customers.length})
+              Tất cả vị trí
             </button>
             <button
               onClick={() => setFilterType('condo')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
                 filterType === 'condo'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
@@ -325,7 +537,7 @@ export const CustomersScreen: React.FC = () => {
             </button>
             <button
               onClick={() => setFilterType('external')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${
                 filterType === 'external'
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
@@ -336,11 +548,12 @@ export const CustomersScreen: React.FC = () => {
             </button>
           </div>
 
-          {(searchQuery || filterType !== 'ALL') && (
+          {(searchQuery || filterType !== 'ALL' || debtFilter !== 'ALL') && (
             <button
               onClick={() => {
                 setSearchQuery('');
                 setFilterType('ALL');
+                setDebtFilter('ALL');
               }}
               className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-0.5"
             >
@@ -380,107 +593,232 @@ export const CustomersScreen: React.FC = () => {
             const isCondo = cust.defaultLocationType === 'condo';
             const { orderCount, totalSpent } = getCustomerOrderStats(cust);
 
-            return (
-              <div
-                key={cust.id}
-                className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 hover:border-emerald-300 transition-all space-y-3"
-              >
-                {/* Top Row: Address Badge, Type, Actions */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {isCondo ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="bg-blue-600 text-white font-black text-lg px-2.5 py-0.5 rounded-xl tracking-wider shadow-xs">
-                          {cust.block}-{cust.floor ? cust.floor.padStart(2, '0') : '??'}-{cust.unit ? cust.unit.padStart(2, '0') : '??'}
-                        </span>
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                          {cust.condoName || 'Chung cư'}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-                        📍 Khách ngoài
-                      </span>
-                    )}
+              const debt = customerDebtMap.get(cust.id) || calculateCustomerDebt(cust);
+              const hasDebt = debt.totalDebt > 0;
 
-                    {orderCount > 0 && (
-                      <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                        {orderCount} đơn • {formatVND(totalSpent)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Edit / Delete Buttons */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => handleOpenEditModal(cust)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition"
-                      title="Chỉnh sửa thông tin khách"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setCustomerToDelete(cust)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition"
-                      title="Xóa khách này"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Customer Details */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <h3 className="font-black text-slate-900 text-base">{cust.name}</h3>
-                    {cust.phone ? (
-                      <a
-                        href={`tel:${cust.phone}`}
-                        className="text-blue-600 font-semibold flex items-center gap-1 hover:underline"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>{cust.phone}</span>
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic">Chưa có số ĐT</span>
-                    )}
-                  </div>
-
-                  {/* Detailed Address */}
-                  {isCondo ? (
-                    <p className="text-xs text-slate-600 font-medium">
-                      Block <strong>{cust.block}</strong>, Tầng <strong>{cust.floor}</strong>, Căn hộ <strong>{cust.unit}</strong> ({cust.condoName || 'Sunrise City'})
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-700 font-medium">
-                      {cust.externalAddress}
-                    </p>
-                  )}
-                </div>
-
-                {/* Delivery Note if present */}
-                {cust.deliveryNote && (
-                  <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-50 p-2 rounded-xl border border-amber-200/60">
-                    <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <span>
-                      Ghi chú quen: <strong>{cust.deliveryNote}</strong>
-                    </span>
-                  </div>
-                )}
-
-                {/* CREATE ORDER FAST ACTION BUTTON */}
-                <button
-                  onClick={() => handleCreateOrderForCustomer(cust)}
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.98] text-white font-black text-xs uppercase tracking-wider shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition"
+              return (
+                <div
+                  key={cust.id}
+                  className={`bg-white rounded-2xl p-4 shadow-sm border transition-all space-y-3 ${
+                    debt.isOverdue
+                      ? 'border-amber-300 ring-1 ring-amber-200'
+                      : debt.isOverLimit
+                      ? 'border-rose-300 ring-1 ring-rose-200'
+                      : hasDebt
+                      ? 'border-rose-200'
+                      : 'border-slate-200 hover:border-emerald-300'
+                  }`}
                 >
-                  <ShoppingBag className="w-4 h-4 text-emerald-200" />
-                  <span>LÊN ĐƠN CHO KHÁCH NÀY (CREATE ORDER)</span>
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
+                  {/* Top Row: Address Badge, VIP, Type, Actions */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isCondo ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="bg-blue-600 text-white font-black text-lg px-2.5 py-0.5 rounded-xl tracking-wider shadow-xs">
+                            {cust.block}-{cust.floor ? cust.floor.padStart(2, '0') : '??'}-{cust.unit ? cust.unit.padStart(2, '0') : '??'}
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                            {cust.condoName || 'Chung cư'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                          📍 Khách ngoài
+                        </span>
+                      )}
+
+                      {cust.isVip && (
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-700 border border-amber-300 flex items-center gap-1">
+                          <Crown className="w-2.5 h-2.5 text-amber-600" />
+                          <span>VIP</span>
+                        </span>
+                      )}
+
+                      {orderCount > 0 && (
+                        <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                          {orderCount} đơn • {formatVND(totalSpent)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Edit / Delete Buttons */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleOpenEditModal(cust)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition"
+                        title="Chỉnh sửa thông tin khách"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setCustomerToDelete(cust)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition"
+                        title="Xóa khách này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Customer Details */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <h3 className="font-black text-slate-900 text-base flex items-center gap-1.5">
+                        <span>{cust.name}</span>
+                      </h3>
+                      {cust.phone ? (
+                        <a
+                          href={`tel:${cust.phone}`}
+                          className="text-blue-600 font-semibold flex items-center gap-1 hover:underline"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>{cust.phone}</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">Chưa có số ĐT</span>
+                      )}
+                    </div>
+
+                    {/* Detailed Address */}
+                    {isCondo ? (
+                      <p className="text-xs text-slate-600 font-medium">
+                        Block <strong>{cust.block}</strong>, Tầng <strong>{cust.floor}</strong>, Căn hộ <strong>{cust.unit}</strong> ({cust.condoName || 'Sunrise City'})
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-700 font-medium">
+                        {cust.externalAddress}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* DEBT SUMMARY STATUS CARD */}
+                  <div
+                    className={`rounded-xl p-2.5 text-xs flex flex-wrap items-center justify-between gap-2 border ${
+                      hasDebt
+                        ? 'bg-rose-50/80 border-rose-200 text-rose-950'
+                        : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase tracking-wider opacity-75">
+                          {hasDebt ? 'Công nợ hiện tại:' : 'Tình trạng công nợ:'}
+                        </span>
+                        <span className="font-mono font-black text-sm">
+                          {hasDebt ? formatVND(debt.totalDebt) : '0đ (Hết nợ)'}
+                        </span>
+                        {hasDebt && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-200/80 text-rose-800">
+                            {debt.unpaidCount} đơn chưa trả
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Warnings / Limit Status */}
+                      <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                        {debt.isOverdue && (
+                          <span className="font-bold text-amber-800 bg-amber-200/90 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                            <Clock className="w-2.5 h-2.5" />
+                            <span>Nợ {debt.daysSinceOldestDebt} ngày (&gt;7 ngày)</span>
+                          </span>
+                        )}
+                        {debt.isOverLimit && (
+                          <span className="font-bold text-purple-800 bg-purple-200/90 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            <span>Vượt hạn mức ({formatVND(cust.debtLimit!)})</span>
+                          </span>
+                        )}
+                        {cust.debtLimit && !debt.isOverLimit && (
+                          <span className="text-slate-500 font-medium">
+                            Hạn mức nợ: {formatVND(cust.debtLimit)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Button inside banner */}
+                    {hasDebt && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomerForReminder(cust)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-2xs transition active:scale-95 ${
+                            debt.isOverdue
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse'
+                              : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                          }`}
+                          title="Tạo tin nhắc nợ Zalo hoặc SMS tự động"
+                        >
+                          <BellRing className="w-3 h-3 text-amber-100" />
+                          <span>Nhắc nợ Zalo/SMS</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomerForZalo(cust)}
+                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-2xs transition active:scale-95"
+                          title="Tạo bảng sao kê đối soát gửi Zalo cho khách"
+                        >
+                          <MessageCircle className="w-3 h-3 text-blue-200" />
+                          <span>Đối soát Zalo</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Delivery Note or Customer Note if present */}
+                  {(cust.deliveryNote || cust.notes) && (
+                    <div className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-0.5">
+                      {cust.deliveryNote && (
+                        <p className="flex items-center gap-1">
+                          <FileText className="w-3 h-3 text-amber-600 shrink-0" />
+                          <span>Ghi chú giao: <strong>{cust.deliveryNote}</strong></span>
+                        </p>
+                      )}
+                      {cust.notes && (
+                        <p className="text-slate-500 italic">
+                          📝 {cust.notes}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ACTION BAR: SỔ CÔNG NỢ & LÊN ĐƠN */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomerForLedger(cust)}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 ${
+                        hasDebt
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                      }`}
+                      title="Mở Sổ Quản lý Công nợ chi tiết của khách"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>SỔ CÔNG NỢ</span>
+                      {hasDebt && (
+                        <span className="text-[10px] bg-indigo-900 text-indigo-200 px-1 rounded-sm">
+                          {debt.unpaidCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCreateOrderForCustomer(cust)}
+                      className="py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95"
+                      title="Tạo đơn hàng mới 1 chạm cho khách này"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>LÊN ĐƠN MỚI</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
 
       {/* ADD / EDIT CUSTOMER MODAL */}
       {showModal && (
@@ -687,6 +1025,59 @@ export const CustomersScreen: React.FC = () => {
                 />
               </div>
 
+              {/* Debt Limit & VIP toggle */}
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+                <span className="text-[11px] font-black uppercase text-indigo-900 tracking-wider block">
+                  ⚙️ Cài đặt công nợ & VIP
+                </span>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Hạn mức nợ tối đa (VND) - Để trống nếu không giới hạn
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 500000, 1000000"
+                    value={debtLimitInput}
+                    onChange={(e) => setDebtLimitInput(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-white border border-slate-200 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Hệ thống sẽ cảnh báo khi tổng nợ của khách vượt quá số tiền này.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="vipCheckbox"
+                    checked={isVipInput}
+                    onChange={(e) => setIsVipInput(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+                  />
+                  <label
+                    htmlFor="vipCheckbox"
+                    className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Đánh dấu là Khách hàng VIP</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Ghi chú nội bộ về khách (Chỉ quán xem)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Khách thanh toán định kỳ cuối tuần, hay đặt cà phê sáng..."
+                    value={notesInput}
+                    onChange={(e) => setNotesInput(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs font-medium rounded-xl bg-white border border-slate-200 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
               {/* Modal Actions */}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
@@ -737,6 +1128,52 @@ export const CustomersScreen: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* CUSTOMER DEBT LEDGER MODAL */}
+      {selectedCustomerForLedger && (
+        <CustomerDebtLedgerModal
+          customer={selectedCustomerForLedger}
+          isOpen={Boolean(selectedCustomerForLedger)}
+          onClose={() => setSelectedCustomerForLedger(null)}
+          onOpenCreateOrder={(c) => handleCreateOrderForCustomer(c)}
+        />
+      )}
+
+      {/* ZALO DEBT STATEMENT MODAL */}
+      {selectedCustomerForZalo && (
+        <ZaloDebtStatementModal
+          customer={selectedCustomerForZalo}
+          unpaidOrders={
+            (
+              customerDebtMap.get(selectedCustomerForZalo.id) ||
+              calculateCustomerDebt(selectedCustomerForZalo)
+            ).unpaidOrders
+          }
+          isOpen={Boolean(selectedCustomerForZalo)}
+          onClose={() => setSelectedCustomerForZalo(null)}
+        />
+      )}
+
+      {/* AUTOMATED OVERDUE DEBT REMINDER MODAL (ZALO / SMS) */}
+      {selectedCustomerForReminder && (
+        <CustomerDebtReminderModal
+          customer={selectedCustomerForReminder}
+          unpaidOrders={
+            (
+              customerDebtMap.get(selectedCustomerForReminder.id) ||
+              calculateCustomerDebt(selectedCustomerForReminder)
+            ).unpaidOrders
+          }
+          isOpen={Boolean(selectedCustomerForReminder)}
+          onClose={() => setSelectedCustomerForReminder(null)}
+          daysOverdue={
+            (
+              customerDebtMap.get(selectedCustomerForReminder.id) ||
+              calculateCustomerDebt(selectedCustomerForReminder)
+            ).daysSinceOldestDebt
+          }
+        />
       )}
     </div>
   );
