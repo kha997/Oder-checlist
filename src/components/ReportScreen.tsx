@@ -1239,35 +1239,81 @@ Oder Checklist - Quản lý đơn hàng & Tài chính`;
               </strong>
             </div>
 
-            <button
-              onClick={() => handleExportCurrentOrderList(displayedOrders)}
-              className="w-full sm:w-auto py-2 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.98]"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span>Tải file CSV ({displayedOrders.length} đơn)</span>
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => {
+                  setExportModalOrders(displayedOrders);
+                  setExportModalDocType('ORDER_SUMMARY');
+                  setExportModalTitle(`Danh sách Đơn hàng - ${periodLabel}`);
+                  setIsExportModalOpen(true);
+                }}
+                className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.98]"
+                title="Xuất bảng tổng hợp đơn hàng ra file PDF hoặc In ấn theo chuẩn A4"
+              >
+                <FileDown className="w-4 h-4 text-rose-100" />
+                <span>Xuất PDF ({displayedOrders.length} đơn)</span>
+              </button>
+
+              <button
+                onClick={() => handleExportCurrentOrderList(displayedOrders)}
+                className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.98]"
+              >
+                <Download className="w-4 h-4 text-emerald-400" />
+                <span>Tải CSV ({displayedOrders.length} đơn)</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* CSV EXPORT FOR ACCOUNTING & BACKUP */}
+      {/* EXPORT DATA & PRINTABLE REPORTS (PDF & CSV) */}
       <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase text-slate-800">
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>XUẤT DỮ LIỆU CSV (BACKUP & KẾ TOÁN)</span>
+            <span>XUẤT DỮ LIỆU BÁO CÁO (PDF & CSV)</span>
           </div>
           <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-emerald-600" />
-            <span>UTF-8 BOM (Mở Excel không lỗi font)</span>
+            <span>Chuẩn in ấn A4 & UTF-8 BOM Excel</span>
           </span>
         </div>
 
         <p className="text-[11px] text-slate-500 leading-relaxed">
-          Xuất dữ liệu theo kỳ đang chọn (<strong>{periodLabel}</strong>) sang định dạng CSV tiêu chuẩn để lưu trữ sao lưu, nhập vào Excel, Google Sheets hoặc gửi cho bộ phận kế toán.
+          Xuất dữ liệu theo kỳ đang chọn (<strong>{periodLabel}</strong>) sang file PDF bản in đối soát hoặc định dạng CSV tiêu chuẩn để nhập vào Excel, Google Sheets.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          {/* Export PDF Report */}
+          <div className="p-3 rounded-2xl bg-gradient-to-br from-rose-50/80 to-pink-50/50 border border-rose-200/90 hover:border-rose-300 transition flex flex-col justify-between space-y-2">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-rose-600" />
+                  Báo cáo Kế toán PDF
+                </span>
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">
+                  Bản in A4
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Tài liệu formatted chuẩn A4: Bảng cân đối doanh thu, tiền mặt, chuyển khoản, công nợ và chữ ký đối soát.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setExportModalOrders(filteredOrders);
+                setExportModalDocType('ACCOUNTING_REPORT');
+                setExportModalTitle(`Báo cáo Tài chính Kế toán - ${periodLabel}`);
+                setIsExportModalOpen(true);
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition active:scale-[0.98]"
+            >
+              <FileDown className="w-3.5 h-3.5 text-rose-100" />
+              <span>Xuất PDF / In ({filteredOrders.length})</span>
+            </button>
+          </div>
+
           {/* Export Sales & Orders */}
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-purple-300 transition flex flex-col justify-between space-y-2">
             <div>
@@ -1281,7 +1327,7 @@ Oder Checklist - Quản lý đơn hàng & Tài chính`;
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Chi tiết từng đơn, khách hàng, món đặt, tiền thu (TM/CK), nợ và ghi chú nội bộ.
+                Chi tiết từng đơn, khách hàng, món đặt, tiền thu (TM/CK), nợ và ghi chú nội bộ ra Excel.
               </p>
             </div>
             <button
@@ -1306,7 +1352,7 @@ Oder Checklist - Quản lý đơn hàng & Tài chính`;
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Bảng kê tồn đầu ngày, số lượng nhập thêm, đã bán và tồn kho hiện tại.
+                Bảng kê tồn đầu ngày, số lượng nhập thêm, đã bán và tồn kho hiện tại ra Excel.
               </p>
             </div>
             <button

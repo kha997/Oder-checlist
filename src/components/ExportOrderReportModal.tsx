@@ -151,9 +151,9 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 print-active-host">
+    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 print-active-host print-printable-root">
       {/* Container */}
-      <div className="bg-slate-50 w-full sm:max-w-4xl max-h-[95vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+      <div className="bg-slate-50 w-full sm:max-w-4xl max-h-[95vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:w-full print:rounded-none">
         
         {/* Top Header - No print */}
         <div className="no-print bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
@@ -257,12 +257,12 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
         )}
 
         {/* Document Live Preview Container - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-200/70">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-200/70 print:overflow-visible print:p-0 print:bg-white">
           {/* Printable Document Sheet (A4 Styled) */}
           <div
             ref={printAreaRef}
             id="printable-export-document"
-            className="print-printable-sheet bg-white text-slate-900 rounded-lg shadow-md max-w-[210mm] mx-auto p-6 sm:p-8 text-xs font-sans leading-relaxed border border-slate-300 print:border-none print:shadow-none print:p-0"
+            className="print-printable-sheet bg-white text-slate-900 rounded-lg shadow-md max-w-[210mm] mx-auto p-6 sm:p-8 text-xs font-sans leading-relaxed border border-slate-300 print:border-none print:shadow-none print:p-0 print:max-w-none print:w-full"
           >
             {/* Header section */}
             <div className="border-b-2 border-slate-900 pb-4 mb-4">

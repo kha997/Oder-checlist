@@ -51,6 +51,7 @@ type DatePreset =
 export const OrderHistoryScreen: React.FC = () => {
   const {
     orders,
+    products,
     markReadyForDelivery,
     markDelivered,
     markPaid,
@@ -1432,6 +1433,41 @@ export const OrderHistoryScreen: React.FC = () => {
             );
           })
         )}
+        {/* Bottom Orders Summary & Quick Export Bar */}
+        {filteredOrders.length > 0 && (
+          <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-600">
+              <span>Đang hiển thị </span>
+              <strong className="text-slate-900">{filteredOrders.length}</strong> / <strong>{orders.length}</strong> đơn hàng • Tổng tiền:{' '}
+              <strong className="text-emerald-700 font-mono font-bold">{formatVND(metrics.totalRevenue)}</strong>
+              {metrics.unpaidCount > 0 && (
+                <span className="text-rose-600 font-bold ml-1.5">
+                  ({metrics.unpaidCount} đơn chưa thu: {formatVND(metrics.unpaidAmount)})
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => setIsExportModalOpen(true)}
+                className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                title={`Xuất ${filteredOrders.length} đơn hàng ra PDF hoặc In ấn`}
+              >
+                <FileDown className="w-4 h-4 text-rose-100" />
+                <span>Xuất PDF / In ({filteredOrders.length})</span>
+              </button>
+
+              <button
+                onClick={handleExportCSV}
+                className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                title={`Xuất ${filteredOrders.length} đơn hàng ra file CSV`}
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                <span>Xuất CSV</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* QUICK PAYMENT MODAL */}
@@ -1499,7 +1535,8 @@ export const OrderHistoryScreen: React.FC = () => {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         orders={filteredOrders}
-        title="Danh sách Đơn hàng"
+        products={products}
+        title="Danh sách Đơn hàng & Báo cáo"
         periodLabel={
           datePreset === 'TODAY'
             ? 'Hôm nay'
@@ -1511,7 +1548,7 @@ export const OrderHistoryScreen: React.FC = () => {
             ? `${startDate || '...'} đến ${endDate || '...'}`
             : 'Tất cả đơn hàng'
         }
-        defaultDocType="ACCOUNTING_REPORT"
+        defaultDocType="ORDER_SUMMARY"
         currentUser={currentUser}
       />
     </div>

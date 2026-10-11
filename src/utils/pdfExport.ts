@@ -14,7 +14,7 @@ export async function exportElementToPdf(
     if (onProgress) onProgress('Đang chuẩn bị trang in...');
 
     // Small delay to ensure all images and fonts are rendered
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 180));
 
     if (onProgress) onProgress('Đang xử lý hình ảnh và văn bản...');
     const canvas = await html2canvas(element, {
@@ -22,12 +22,12 @@ export async function exportElementToPdf(
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      scrollY: -window.scrollY,
+      scrollX: -window.scrollX,
+      windowWidth: element.scrollWidth || 1024,
     });
 
-    if (onProgress) onProgress('Đang đóng gói file PDF...');
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    if (onProgress) onProgress('Đang định dạng các trang PDF...');
 
     // Standard A4 dimensions in mm
     const pdf = new jsPDF({
@@ -42,26 +42,62 @@ export async function exportElementToPdf(
 
     // Margins in mm
     const margin = 8;
-    const contentWidth = pdfWidth - margin * 2;
-    const contentHeight = (canvas.height * contentWidth) / canvas.width;
+    const contentWidth = pdfWidth - margin * 2; // 194mm
+    const contentHeightPerPage = pdfHeight - margin * 2 - 8; // Leave 8mm at bottom for page numbers
 
-    let heightLeft = contentHeight;
-    let position = margin;
-    let page = 1;
+    // Pixel ratio
+    const pxPerMm = canvas.width / contentWidth;
+    const pageHeightPx = Math.floor(contentHeightPerPage * pxPerMm);
 
-    // First page
-    pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-    heightLeft -= (pdfHeight - margin * 2);
+    const totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
 
-    // Additional pages if report is long
-    while (heightLeft > 0) {
-      position = -(page * (pdfHeight - margin * 2)) + margin;
-      pdf.addPage();
-      page++;
-      pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-      heightLeft -= (pdfHeight - margin * 2);
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) {
+        pdf.addPage();
+      }
+
+      const sourceY = page * pageHeightPx;
+      const sourceHeight = Math.min(pageHeightPx, canvas.height - sourceY);
+
+      // Create a slice canvas for this page
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sourceHeight;
+      const ctx = pageCanvas.getContext('2d');
+
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          sourceY,
+          canvas.width,
+          sourceHeight,
+          0,
+          0,
+          canvas.width,
+          sourceHeight
+        );
+
+        const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.95);
+        const sliceHeightMm = sourceHeight / pxPerMm;
+
+        pdf.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
+
+        // Add page footer with page number
+        pdf.setFontSize(8);
+        pdf.setTextColor(140, 140, 140);
+        pdf.text(
+          `Trang ${page + 1} / ${totalPages} • Oder Checklist System`,
+          pdfWidth / 2,
+          pdfHeight - 4,
+          { align: 'center' }
+        );
+      }
     }
 
+    if (onProgress) onProgress('Đang hoàn thiện file...');
     const cleanFilename = filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`;
     pdf.save(cleanFilename);
 
