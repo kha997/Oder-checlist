@@ -834,6 +834,37 @@ export const DeliveryModeScreen: React.FC = () => {
                             </span>
                           )}
 
+                          {order.deliveryStatus === 'PENDING' && (() => {
+                            const timeStr = order.scheduledDeliveryTime || order.deliveryDueAt;
+                            if (!timeStr) return null;
+                            const d = new Date(timeStr);
+                            if (isNaN(d.getTime())) return null;
+                            const diffMin = Math.round((d.getTime() - Date.now()) / 60000);
+                            const isNear = diffMin <= 30 && diffMin > 0;
+                            const isOver = diffMin <= 0;
+                            return (
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+                                  isNear
+                                    ? 'bg-amber-100 text-amber-900 border-amber-400 animate-pulse ring-1 ring-amber-400/50'
+                                    : isOver
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                                title="Lịch hẹn giao hàng"
+                              >
+                                <Clock className="w-2.5 h-2.5 text-amber-600" />
+                                <span>
+                                  {isNear
+                                    ? `Hẹn: ${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (còn ${diffMin}p)`
+                                    : isOver
+                                    ? `Quá hẹn (${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})`
+                                    : `Hẹn: ${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                                </span>
+                              </span>
+                            );
+                          })()}
+
                           {order.deliveryStatus === 'OUT_FOR_DELIVERY' && (() => {
                             const dueStatus = getOrderDeliveryDueStatus(order, schedulerConfig.outForDeliveryReminderMinutes);
                             if (!dueStatus) return null;

@@ -31,6 +31,7 @@ import {
   AlertCircle,
   Truck,
   Repeat,
+  Clock,
   Image as ImageIcon,
 } from 'lucide-react';
 
@@ -83,6 +84,9 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
   const [nextRecurringDate, setNextRecurringDate] = useState<string>(() =>
     calculateNextRecurringDate(new Date().toISOString(), 'WEEKLY')
   );
+
+  // Scheduled Delivery Time State (e.g. 30 mins before reminder)
+  const [scheduledDeliveryTime, setScheduledDeliveryTime] = useState<string>('');
 
   // Attached Receipt image if any
   const [receiptImage, setReceiptImage] = useState<string | null>(initialReceiptImage || null);
@@ -283,6 +287,9 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
       paymentMethod: paymentStatus === 'PAID' ? paymentMethod : undefined,
       priority,
       receiptImageUrl: receiptImage || undefined,
+      scheduledDeliveryTime: scheduledDeliveryTime.trim()
+        ? new Date(scheduledDeliveryTime).toISOString()
+        : undefined,
       isRecurring,
       recurringFrequency: isRecurring ? recurringFrequency : undefined,
       nextRecurringDate: isRecurring ? nextRecurringDate : undefined,
@@ -675,6 +682,100 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
                     <option value="UNPAID">Chưa thu tiền</option>
                     <option value="PAID">Đã thu (Tiền mặt)</option>
                   </select>
+                </div>
+
+                {/* Scheduled Delivery Time & 30-min Reminder */}
+                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/90 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Giờ hẹn giao hàng (Nhắc trước 30p):</span>
+                    </label>
+                    {scheduledDeliveryTime ? (
+                      <span className="text-[10px] font-black text-amber-800 bg-white px-2 py-0.5 rounded-md border border-amber-300">
+                        {new Date(scheduledDeliveryTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500">Giao ngay</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setScheduledDeliveryTime('')}
+                      className={`py-1 px-1 rounded-lg text-[10px] font-bold text-center transition ${
+                        !scheduledDeliveryTime
+                          ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Giao ngay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date(Date.now() + 30 * 60000);
+                        const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                        setScheduledDeliveryTime(localIso);
+                      }}
+                      className={`py-1 px-1 rounded-lg text-[10px] font-bold text-center transition ${
+                        scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 30 * 60000)) < 120000
+                          ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      +30 phút
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date(Date.now() + 60 * 60000);
+                        const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                        setScheduledDeliveryTime(localIso);
+                      }}
+                      className={`py-1 px-1 rounded-lg text-[10px] font-bold text-center transition ${
+                        scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 60 * 60000)) < 120000
+                          ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      +1 giờ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date(Date.now() + 120 * 60000);
+                        const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                        setScheduledDeliveryTime(localIso);
+                      }}
+                      className={`py-1 px-1 rounded-lg text-[10px] font-bold text-center transition ${
+                        scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 120 * 60000)) < 120000
+                          ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      +2 giờ
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <input
+                      type="datetime-local"
+                      value={scheduledDeliveryTime}
+                      onChange={(e) => setScheduledDeliveryTime(e.target.value)}
+                      className="flex-1 bg-white border border-amber-300 rounded-lg px-2 py-1 text-[11px] font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    {scheduledDeliveryTime && (
+                      <button
+                        type="button"
+                        onClick={() => setScheduledDeliveryTime('')}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-rose-600 bg-white border border-slate-200 rounded-lg"
+                      >
+                        Hủy
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Recurring Schedule */}

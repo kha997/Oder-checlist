@@ -44,6 +44,7 @@ function formatTimeAgo(isoString: string): string {
 
 export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, onClose }) => {
   const {
+    orders,
     notifications,
     unreadNotificationCount,
     markNotificationAsRead,
@@ -63,6 +64,15 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
   const [activeTab, setActiveTab] = useState<'NOTIFICATIONS' | 'SCHEDULER'>('NOTIFICATIONS');
   const [schedulerRunResult, setSchedulerRunResult] = useState<string | null>(null);
 
+  const pendingScheduledOrdersCount = React.useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.status === 'ACTIVE' &&
+        o.deliveryStatus === 'PENDING' &&
+        Boolean(o.scheduledDeliveryTime || o.deliveryDueAt)
+    ).length;
+  }, [orders]);
+
   if (!isOpen) return null;
 
   const handleNotificationClick = (notif: typeof notifications[0]) => {
@@ -73,6 +83,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
     }
     if (notif.type === 'READY_FOR_DELIVERY' || notif.type === 'OUT_FOR_DELIVERY_DUE') {
       setCurrentScreen('DELIVERY');
+    } else if (notif.type === 'SCHEDULED_DELIVERY_REMINDER') {
+      setCurrentScreen('HOME');
     } else {
       setCurrentScreen('ORDER_HISTORY');
     }
@@ -80,7 +92,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
 
   const handleManualSchedulerCheck = () => {
     const result = runNotificationSchedulerCheck();
-    const text = `Đã kiểm tra: ${result.outForDeliveryRemindersCount} đơn quá hạn cần giao, ${result.recurringGeneratedCount} đơn định kỳ đã tạo.`;
+    const text = `Đã kiểm tra: ${result.scheduledDeliveryRemindersCount} đơn sắp đến giờ hẹn giao, ${result.outForDeliveryRemindersCount} đơn giao quá hạn, ${result.recurringGeneratedCount} đơn định kỳ đã tạo.`;
     setSchedulerRunResult(text);
     setTimeout(() => setSchedulerRunResult(null), 4000);
   };
@@ -175,6 +187,71 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                   }`}
                 />
               </button>
+            </div>
+
+            {/* Scheduled Delivery 30-min Reminder Config (Pending Orders) */}
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-xs font-black text-slate-900">
+                        Nhắc hẹn giao trước 30 phút (Pending Orders)
+                      </h4>
+                      {pendingScheduledOrdersCount > 0 && (
+                        <span className="text-[9px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full border border-amber-200">
+                          {pendingScheduledOrdersCount} đơn hẹn
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Cảnh báo người bán chuẩn bị món trước giờ giao đã hẹn của đơn Chờ xử lý
+                    </p>
+                  </div>
+                </div>
+
+                <input
+                  type="checkbox"
+                  checked={schedulerConfig.remindBeforeScheduledDelivery}
+                  onChange={(e) => updateSchedulerConfig({ remindBeforeScheduledDelivery: e.target.checked })}
+                  className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                />
+              </div>
+
+              {schedulerConfig.remindBeforeScheduledDelivery && (
+                <div className="pt-2 border-t border-slate-100 space-y-1.5 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 block">
+                      Thời gian nhắc trước giờ hẹn giao:
+                    </span>
+                    <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      Trước {schedulerConfig.scheduledDeliveryReminderMinutes || 30} phút
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    {[15, 30, 45, 60].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => updateSchedulerConfig({ scheduledDeliveryReminderMinutes: mins })}
+                        className={`py-1.5 rounded-xl text-center font-black transition active:scale-95 text-xs border ${
+                          (schedulerConfig.scheduledDeliveryReminderMinutes || 30) === mins
+                            ? 'bg-amber-50 border-amber-500 text-amber-800 ring-2 ring-amber-500/20 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {mins}p {mins === 30 ? '(Chuẩn)' : ''}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Hệ thống sẽ đổ chuông chime, gửi push notification và in-app toast nhắc nhở trước {schedulerConfig.scheduledDeliveryReminderMinutes || 30} phút để người bán không bị trễ hẹn khách.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Out for Delivery Due Reminder Config */}
@@ -377,6 +454,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                 </div>
               ) : (
                 notifications.map((notif) => {
+                  const isScheduled = notif.type === 'SCHEDULED_DELIVERY_REMINDER';
                   const isNew = notif.type === 'NEW_ORDER';
                   const isDue = notif.type === 'OUT_FOR_DELIVERY_DUE';
                   const isRecurring = notif.type === 'RECURRING_ORDER_GENERATED';
@@ -393,7 +471,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                       <div className="flex items-start gap-3">
                         <div
                           className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                            isDue
+                            isScheduled
+                              ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                              : isDue
                               ? 'bg-rose-100 text-rose-700 border border-rose-300'
                               : isRecurring
                               ? 'bg-purple-100 text-purple-700 border border-purple-300'
@@ -402,7 +482,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                               : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                           }`}
                         >
-                          {isDue ? (
+                          {isScheduled ? (
+                            <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                          ) : isDue ? (
                             <Clock className="w-4 h-4 text-rose-600" />
                           ) : isRecurring ? (
                             <Repeat className="w-4 h-4 text-purple-600" />
@@ -417,7 +499,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                           <div className="flex items-center justify-between gap-1">
                             <span
                               className={`text-[9px] font-black uppercase px-2 py-0.2 rounded-full ${
-                                isDue
+                                isScheduled
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : isDue
                                   ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                   : isRecurring
                                   ? 'bg-purple-100 text-purple-800 border border-purple-200'
@@ -426,7 +510,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                                   : 'bg-emerald-100 text-emerald-800'
                               }`}
                             >
-                              {isDue
+                              {isScheduled
+                                ? '⏰ Hẹn giao hàng'
+                                : isDue
                                 ? '⏰ Hết giờ giao'
                                 : isRecurring
                                 ? '🔁 Đơn định kỳ'
@@ -445,7 +531,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
 
                           <div className="flex items-center gap-1 text-[11px] font-bold text-purple-700 group-hover:text-purple-800 mt-1.5">
                             <span>
-                              {isDue
+                              {isScheduled
+                                ? 'Chuẩn bị món & Xem đơn'
+                                : isDue
                                 ? 'Kiểm tra chuyến giao'
                                 : isRecurring
                                 ? 'Xem đơn định kỳ'

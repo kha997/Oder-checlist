@@ -124,6 +124,9 @@ export const CreateOrderScreen: React.FC = () => {
   // Delivery Status Tracking State (PENDING, OUT_FOR_DELIVERY, DELIVERED)
   const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>('PENDING');
 
+  // Scheduled Delivery Time State (e.g. 30 mins before reminder)
+  const [scheduledDeliveryTime, setScheduledDeliveryTime] = useState<string>('');
+
   // Recurring Order State (Daily, Weekly, Bi-weekly, Monthly)
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('WEEKLY');
@@ -408,6 +411,9 @@ export const CreateOrderScreen: React.FC = () => {
       tags: selectedTags,
       priority: priority,
       deliveryStatus: deliveryStatus,
+      scheduledDeliveryTime: scheduledDeliveryTime.trim()
+        ? new Date(scheduledDeliveryTime).toISOString()
+        : undefined,
       isRecurring: isRecurring,
       recurringFrequency: isRecurring ? recurringFrequency : undefined,
       nextRecurringDate: isRecurring ? nextRecurringDate : undefined,
@@ -1562,6 +1568,138 @@ export const CreateOrderScreen: React.FC = () => {
               <span className="text-xs font-bold mt-1">Đã giao</span>
               <span className="text-[10px] text-slate-400">Delivered</span>
             </button>
+          </div>
+        </div>
+
+        {/* SECTION 9.5: GIỜ HẸN GIAO HÀNG & NHẮC NHỞ TRƯỚC 30 PHÚT */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                  Giờ hẹn giao hàng (Scheduled Delivery Time)
+                </h3>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  Hệ thống tự động nhắc nhở người bán trước 30 phút để chuẩn bị hàng
+                </p>
+              </div>
+            </div>
+
+            {scheduledDeliveryTime ? (
+              <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                <Clock className="w-3 h-3 text-amber-600" />
+                <span>
+                  {new Date(scheduledDeliveryTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(scheduledDeliveryTime).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                </span>
+              </span>
+            ) : (
+              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">
+                Giao ngay (Không hẹn giờ)
+              </span>
+            )}
+          </div>
+
+          {/* Quick presets */}
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-700 block">
+              Chọn nhanh mốc hẹn giao:
+            </span>
+            <div className="grid grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setScheduledDeliveryTime('')}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition active:scale-95 border ${
+                  !scheduledDeliveryTime
+                    ? 'bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-2 ring-amber-400/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Giao ngay
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date(Date.now() + 30 * 60000);
+                  // Format to YYYY-MM-DDTHH:mm
+                  const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                  setScheduledDeliveryTime(localIso);
+                }}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition active:scale-95 border ${
+                  scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 30 * 60000)) < 120000
+                    ? 'bg-amber-50 border-amber-500 text-amber-900 font-black shadow-xs ring-2 ring-amber-400/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                +30 phút
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date(Date.now() + 60 * 60000);
+                  const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                  setScheduledDeliveryTime(localIso);
+                }}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition active:scale-95 border ${
+                  scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 60 * 60000)) < 120000
+                    ? 'bg-amber-50 border-amber-500 text-amber-900 font-black shadow-xs ring-2 ring-amber-400/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                +1 giờ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date(Date.now() + 120 * 60000);
+                  const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                  setScheduledDeliveryTime(localIso);
+                }}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition active:scale-95 border ${
+                  scheduledDeliveryTime && Math.abs(new Date(scheduledDeliveryTime).getTime() - (Date.now() + 120 * 60000)) < 120000
+                    ? 'bg-amber-50 border-amber-500 text-amber-900 font-black shadow-xs ring-2 ring-amber-400/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                +2 giờ
+              </button>
+            </div>
+          </div>
+
+          {/* Precise datetime-local input */}
+          <div className="pt-2 border-t border-slate-100 space-y-1.5">
+            <label className="text-[11px] font-bold text-slate-700 block">
+              Hoặc chọn ngày giờ giao cụ thể:
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="datetime-local"
+                value={scheduledDeliveryTime}
+                onChange={(e) => setScheduledDeliveryTime(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+              />
+              {scheduledDeliveryTime && (
+                <button
+                  type="button"
+                  onClick={() => setScheduledDeliveryTime('')}
+                  className="px-2.5 py-2 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                  title="Hủy giờ hẹn"
+                >
+                  Xóa
+                </button>
+              )}
+            </div>
+            <div className="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Nhắc nhở thông minh:</strong> Khi đơn ở trạng thái Chờ xử lý, ứng dụng sẽ tự động kích hoạt thông báo đẩy trình duyệt và chuông nhắc <strong>30 phút trước giờ giao</strong> để bạn làm nóng hoặc đóng gói đơn hàng.
+              </span>
+            </div>
           </div>
         </div>
 

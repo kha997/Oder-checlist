@@ -59,6 +59,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     setGlobalSearchQuery,
     roleConfig,
     customers,
+    updateOrderScheduledDeliveryTime,
   } = useApp();
   const [copied, setCopied] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -67,6 +68,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const [showContactModal, setShowContactModal] = useState(false);
   const [showBankSettingsModal, setShowBankSettingsModal] = useState(false);
   const [showCustomerDebtModal, setShowCustomerDebtModal] = useState(false);
+  const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  const [scheduleInputVal, setScheduleInputVal] = useState('');
 
   const matchedCustomer: Customer = React.useMemo(() => {
     if (!order) {
@@ -368,6 +371,214 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* SCHEDULED DELIVERY TIME & 30-MIN REMINDER CARD */}
+          {(() => {
+            const scheduledTimeStr = order.scheduledDeliveryTime || order.deliveryDueAt;
+            const scheduledDate = scheduledTimeStr ? new Date(scheduledTimeStr) : null;
+            const isValidDate = scheduledDate && !isNaN(scheduledDate.getTime());
+            const diffMinutes = isValidDate ? Math.round((scheduledDate.getTime() - Date.now()) / 60000) : null;
+            const isPending = order.deliveryStatus === 'PENDING';
+            const isNearDue = isPending && diffMinutes !== null && diffMinutes <= 30 && diffMinutes > 0;
+            const isOverdue = isPending && diffMinutes !== null && diffMinutes <= 0;
+
+            const handleSaveSchedule = (isoString?: string) => {
+              updateOrderScheduledDeliveryTime(order.id, isoString);
+              setIsEditingSchedule(false);
+              setScheduleInputVal('');
+            };
+
+            return (
+              <div
+                className={`rounded-2xl p-3.5 border space-y-2.5 text-xs transition-all ${
+                  isNearDue
+                    ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400/40 shadow-xs'
+                    : isOverdue
+                    ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400/30'
+                    : isValidDate
+                    ? 'bg-amber-50/50 border-amber-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                        isNearDue
+                          ? 'bg-amber-500 text-slate-950 animate-pulse'
+                          : isOverdue
+                          ? 'bg-rose-600 text-white'
+                          : isValidDate
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-black text-slate-900 text-xs block">
+                          Giờ hẹn giao hàng (Scheduled Delivery)
+                        </span>
+                        {isNearDue && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.2 rounded-full bg-amber-500 text-slate-950 animate-pulse shadow-2xs">
+                            Sắp đến giờ (còn {diffMinutes}p)
+                          </span>
+                        )}
+                        {isOverdue && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.2 rounded-full bg-rose-600 text-white shadow-2xs">
+                            Quá giờ hẹn giao
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        {isValidDate
+                          ? 'Cảnh báo tự động trước 30 phút để chuẩn bị món & điều phối shipper'
+                          : 'Chưa đặt giờ hẹn giao cụ thể'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isEditingSchedule && isValidDate) {
+                        const localIso = new Date(scheduledDate.getTime() - scheduledDate.getTimezoneOffset() * 60000)
+                          .toISOString()
+                          .slice(0, 16);
+                        setScheduleInputVal(localIso);
+                      }
+                      setIsEditingSchedule(!isEditingSchedule);
+                    }}
+                    className="text-[11px] font-bold text-amber-800 hover:text-amber-950 bg-white px-2.5 py-1 rounded-xl border border-amber-300 shadow-2xs transition active:scale-95"
+                  >
+                    {isEditingSchedule ? 'Đóng' : isValidDate ? 'Đổi giờ hẹn' : '+ Đặt giờ hẹn'}
+                  </button>
+                </div>
+
+                {/* Display Current Scheduled Time & Alert */}
+                {isValidDate && !isEditingSchedule && (
+                  <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/80 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Thời gian hẹn</span>
+                      <span className="font-black text-slate-900 text-sm">
+                        {scheduledDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-xs text-slate-500 font-semibold ml-2">
+                          ({scheduledDate.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })})
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Trạng thái nhắc</span>
+                      {isPending ? (
+                        <span
+                          className={`text-xs font-black inline-flex items-center gap-1 ${
+                            isNearDue
+                              ? 'text-amber-700 animate-pulse'
+                              : isOverdue
+                              ? 'text-rose-600'
+                              : 'text-slate-600'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>
+                            {diffMinutes !== null && diffMinutes > 0
+                              ? `Còn ${diffMinutes} phút`
+                              : diffMinutes === 0
+                              ? 'Đến giờ giao'
+                              : `Quá ${Math.abs(diffMinutes ?? 0)} phút`}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-emerald-600">Đang giao / Đã giao</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline Editing Controls */}
+                {isEditingSchedule && (
+                  <div className="bg-white p-3 rounded-xl border border-amber-300 space-y-2.5 animate-fadeIn">
+                    <span className="text-[11px] font-bold text-slate-700 block">
+                      Chọn nhanh mốc hẹn giao từ thời điểm hiện tại:
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(Date.now() + 30 * 60000);
+                          handleSaveSchedule(d.toISOString());
+                        }}
+                        className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold rounded-lg text-center transition"
+                      >
+                        +30 phút
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(Date.now() + 60 * 60000);
+                          handleSaveSchedule(d.toISOString());
+                        }}
+                        className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold rounded-lg text-center transition"
+                      >
+                        +1 giờ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(Date.now() + 120 * 60000);
+                          handleSaveSchedule(d.toISOString());
+                        }}
+                        className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold rounded-lg text-center transition"
+                      >
+                        +2 giờ
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 pt-1 border-t border-slate-100">
+                      <label className="text-[10px] font-bold text-slate-600 block">
+                        Hoặc chọn giờ hẹn chính xác:
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="datetime-local"
+                          value={scheduleInputVal}
+                          onChange={(e) => setScheduleInputVal(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        />
+                        <button
+                          type="button"
+                          disabled={!scheduleInputVal}
+                          onClick={() => {
+                            if (scheduleInputVal) {
+                              handleSaveSchedule(new Date(scheduleInputVal).toISOString());
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs transition ${
+                            scheduleInputVal
+                              ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                              : 'bg-slate-300 cursor-not-allowed'
+                          }`}
+                        >
+                          Lưu
+                        </button>
+                        {isValidDate && (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSchedule(undefined)}
+                            className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition"
+                          >
+                            Xóa hẹn
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Items Breakdown Card */}
           <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2 text-xs">

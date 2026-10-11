@@ -1202,6 +1202,40 @@ export const OrderHistoryScreen: React.FC = () => {
                         </span>
                       </button>
                     )}
+
+                    {/* Scheduled Delivery Time Badge & 30-min alert */}
+                    {(() => {
+                      const timeStr = order.scheduledDeliveryTime || order.deliveryDueAt;
+                      if (!timeStr) return null;
+                      const dateObj = new Date(timeStr);
+                      if (isNaN(dateObj.getTime())) return null;
+                      const diffMin = Math.round((dateObj.getTime() - Date.now()) / 60000);
+                      const isPending = order.deliveryStatus === 'PENDING';
+                      const isNear = isPending && diffMin <= 30 && diffMin > 0;
+                      const isOver = isPending && diffMin <= 0;
+
+                      return (
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full border shadow-2xs flex items-center gap-1 ${
+                            isNear
+                              ? 'bg-amber-100 text-amber-900 border-amber-400 animate-pulse font-extrabold ring-1 ring-amber-400/50'
+                              : isOver
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}
+                          title={`Giờ hẹn giao: ${dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                        >
+                          <Clock className={`w-3 h-3 ${isNear ? 'text-amber-700' : isOver ? 'text-rose-600' : 'text-amber-600'}`} />
+                          <span>
+                            {isNear
+                              ? `Hẹn: ${dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (còn ${diffMin}p)`
+                              : isOver
+                              ? `Quá hẹn (${dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})`
+                              : `Hẹn: ${dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                          </span>
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 

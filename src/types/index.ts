@@ -23,6 +23,7 @@ export type NotificationType =
   | 'NEW_ORDER'
   | 'READY_FOR_DELIVERY'
   | 'OUT_FOR_DELIVERY_DUE'
+  | 'SCHEDULED_DELIVERY_REMINDER'
   | 'RECURRING_ORDER_GENERATED'
   | 'SYSTEM';
 
@@ -41,6 +42,8 @@ export interface NotificationSchedulerConfig {
   enabled: boolean;
   outForDeliveryReminderMinutes: number; // e.g. 15, 20, 30, 45 minutes
   remindOnOutForDeliveryDue: boolean;
+  scheduledDeliveryReminderMinutes: number; // e.g. 15, 30, 45, 60 minutes before scheduled delivery
+  remindBeforeScheduledDelivery: boolean; // Remind seller 30 mins before scheduled delivery time
   autoGenerateRecurringOrders: boolean; // Auto-generate when recurrence date arrives
   notifyOnRecurringGenerated: boolean; // Alert when recurring order is created
   soundAlert: boolean;
@@ -51,6 +54,8 @@ export const DEFAULT_SCHEDULER_CONFIG: NotificationSchedulerConfig = {
   enabled: true,
   outForDeliveryReminderMinutes: 20,
   remindOnOutForDeliveryDue: true,
+  scheduledDeliveryReminderMinutes: 30,
+  remindBeforeScheduledDelivery: true,
   autoGenerateRecurringOrders: true,
   notifyOnRecurringGenerated: true,
   soundAlert: true,
@@ -175,6 +180,8 @@ export interface Order {
   outForDeliveryAt?: string; // ISO string when marked OUT_FOR_DELIVERY
   deliveryDueAt?: string; // ISO string when estimated delivery window expires
   dueReminderSent?: boolean; // Whether the scheduler has sent a due reminder
+  scheduledDeliveryTime?: string; // ISO string e.g. "2026-10-11T14:30:00.000Z" when order is scheduled to be delivered
+  scheduledReminderSent?: boolean; // Whether the 30-min scheduled delivery reminder has been sent
   deliverySequenceIndex?: number; // Custom drag-and-drop optimized route stop sequence index
 }
 

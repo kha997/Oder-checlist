@@ -16,6 +16,7 @@ export const NotificationToast: React.FC = () => {
   if (!activeToastNotification) return null;
 
   const type = activeToastNotification.type;
+  const isScheduledReminder = type === 'SCHEDULED_DELIVERY_REMINDER';
   const isDue = type === 'OUT_FOR_DELIVERY_DUE';
   const isRecurring = type === 'RECURRING_ORDER_GENERATED';
   const isReady = type === 'READY_FOR_DELIVERY';
@@ -29,6 +30,8 @@ export const NotificationToast: React.FC = () => {
     }
     if (isDue || isReady) {
       setCurrentScreen('DELIVERY');
+    } else if (isScheduledReminder) {
+      setCurrentScreen('HOME');
     } else {
       setCurrentScreen('ORDER_HISTORY');
     }
@@ -41,7 +44,9 @@ export const NotificationToast: React.FC = () => {
     >
       <div
         className={`rounded-2xl p-3.5 shadow-2xl border backdrop-blur-md transition-all ${
-          isDue
+          isScheduledReminder
+            ? 'bg-amber-950/95 text-white border-amber-500/60 shadow-amber-900/40 ring-1 ring-amber-400/40'
+            : isDue
             ? 'bg-rose-950/95 text-white border-rose-500/50 shadow-rose-900/30 ring-1 ring-rose-500/30'
             : isRecurring
             ? 'bg-purple-950/95 text-white border-purple-400/50 shadow-purple-900/30 ring-1 ring-purple-400/30'
@@ -54,7 +59,9 @@ export const NotificationToast: React.FC = () => {
           <div className="flex items-start gap-2.5 flex-1 min-w-0">
             <div
               className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-                isDue
+                isScheduledReminder
+                  ? 'bg-amber-500 text-white ring-2 ring-amber-300/40 animate-pulse'
+                  : isDue
                   ? 'bg-rose-600 text-white ring-2 ring-rose-400/40 animate-pulse'
                   : isRecurring
                   ? 'bg-purple-600 text-white ring-2 ring-purple-300/40'
@@ -63,7 +70,9 @@ export const NotificationToast: React.FC = () => {
                   : 'bg-indigo-600 text-white ring-2 ring-indigo-400/40'
               }`}
             >
-              {isDue ? (
+              {isScheduledReminder ? (
+                <Clock className="w-5 h-5 animate-pulse" />
+              ) : isDue ? (
                 <Clock className="w-5 h-5 animate-spin" style={{ animationDuration: '4s' }} />
               ) : isRecurring ? (
                 <Repeat className="w-5 h-5" />
@@ -78,7 +87,9 @@ export const NotificationToast: React.FC = () => {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span
                   className={`text-[9px] font-black uppercase px-2 py-0.2 rounded-full ${
-                    isDue
+                    isScheduledReminder
+                      ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40'
+                      : isDue
                       ? 'bg-rose-500/40 text-rose-200 border border-rose-400/40'
                       : isRecurring
                       ? 'bg-purple-500/40 text-purple-200 border border-purple-400/40'
@@ -87,7 +98,9 @@ export const NotificationToast: React.FC = () => {
                       : 'bg-indigo-500/30 text-indigo-300'
                   }`}
                 >
-                  {isDue
+                  {isScheduledReminder
+                    ? '⏰ Nhắc hẹn giao (30 phút)'
+                    : isDue
                     ? '⏰ Hết giờ giao hàng'
                     : isRecurring
                     ? '🔁 Đơn định kỳ mới'
@@ -110,7 +123,9 @@ export const NotificationToast: React.FC = () => {
                 <button
                   onClick={handleAction}
                   className={`text-[11px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 transition active:scale-95 ${
-                    isDue
+                    isScheduledReminder
+                      ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-xs'
+                      : isDue
                       ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-xs'
                       : isRecurring
                       ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-xs'
@@ -120,7 +135,9 @@ export const NotificationToast: React.FC = () => {
                   }`}
                 >
                   <span>
-                    {isDue
+                    {isScheduledReminder
+                      ? 'Chuẩn bị món & Xem đơn'
+                      : isDue
                       ? 'Kiểm tra giao hàng'
                       : isRecurring
                       ? 'Xem đơn định kỳ'

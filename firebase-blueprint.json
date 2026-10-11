@@ -106,6 +106,15 @@
           "type": "string",
           "description": "Proof note such as door placement",
           "maxLength": 200
+        },
+        "scheduledDeliveryTime": {
+          "type": "string",
+          "description": "Scheduled delivery target timestamp",
+          "maxLength": 64
+        },
+        "scheduledReminderSent": {
+          "type": "boolean",
+          "description": "Whether the 30-minute reminder before delivery was already triggered"
         }
       },
       "required": ["id", "customerName", "totalAmount", "deliveryStatus", "paymentStatus", "status", "createdAt"]

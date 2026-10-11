@@ -29,6 +29,7 @@ export type SoundType =
   | 'CAMERA_SHUTTER'
   | 'SCAN_SUCCESS'
   | 'OUT_FOR_DELIVERY_DUE'
+  | 'SCHEDULED_DELIVERY_REMINDER'
   | 'RECURRING_ORDER_GENERATED'
   | 'SYSTEM';
 
@@ -39,6 +40,7 @@ export type SoundType =
  * - CAMERA_SHUTTER: Quick tactile camera snap click
  * - SCAN_SUCCESS: Crisp high beep confirming scan match
  * - OUT_FOR_DELIVERY_DUE: Urgent attention chime warning delivery time is due
+ * - SCHEDULED_DELIVERY_REMINDER: Melodic warning chime alerting seller 30 mins before scheduled delivery
  * - RECURRING_ORDER_GENERATED: Upbeat recurring cycle harmonic chime
  */
 export function playNotificationSound(type: SoundType): void {
@@ -73,6 +75,28 @@ export function playNotificationSound(type: SoundType): void {
 
       osc2.start(now + 0.12);
       osc2.stop(now + 0.6);
+    } else if (type === 'SCHEDULED_DELIVERY_REMINDER') {
+      // 3-tone attention chime for 30-min scheduled delivery reminder: A4 (440Hz) -> C#5 (554.37Hz) -> E5 (659.25Hz)
+      const reminderNotes = [440, 554.37, 659.25, 880];
+      reminderNotes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = now + idx * 0.1;
+        const endTime = startTime + 0.3;
+
+        osc.type = idx === 3 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.22, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(endTime);
+      });
     } else if (type === 'OUT_FOR_DELIVERY_DUE') {
       // Urgent due alarm: rhythmic double pulse alert
       const tones = [740, 880, 740, 880];

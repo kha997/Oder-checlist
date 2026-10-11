@@ -119,6 +119,7 @@ interface AppContextType {
     cost?: number;
     price?: number;
     receiptImageUrl?: string;
+    scheduledDeliveryTime?: string;
     isRecurring?: boolean;
     recurringFrequency?: RecurringFrequency;
     nextRecurringDate?: string;
@@ -127,6 +128,7 @@ interface AppContextType {
   toggleRecurringSchedule: (orderId: string, active?: boolean) => void;
   triggerRecurringOrderInstance: (orderId: string) => Order | null;
   updateRecurringFrequency: (orderId: string, frequency: RecurringFrequency) => void;
+  updateOrderScheduledDeliveryTime: (orderId: string, scheduledTime?: string) => void;
   markReadyForDelivery: (orderId: string) => void;
   markOutForDelivery: (orderId: string) => void;
   updateDeliveryStatus: (orderId: string, status: DeliveryStatus, proofImage?: string) => void;
@@ -162,7 +164,11 @@ interface AppContextType {
   // Notification Scheduler system
   schedulerConfig: NotificationSchedulerConfig;
   updateSchedulerConfig: (updates: Partial<NotificationSchedulerConfig>) => void;
-  runNotificationSchedulerCheck: () => { outForDeliveryRemindersCount: number; recurringGeneratedCount: number };
+  runNotificationSchedulerCheck: () => {
+    outForDeliveryRemindersCount: number;
+    scheduledDeliveryRemindersCount: number;
+    recurringGeneratedCount: number;
+  };
 
   // Condo actions
   addCondo: (name: string, blocks: string[]) => void;
@@ -431,8 +437,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         body: params.message,
         tag: params.orderId || newNotif.id,
         onClick: () => {
+          if (params.orderId) {
+            setGlobalSearchQuery(params.orderId);
+          }
           if (params.type === 'READY_FOR_DELIVERY' || params.type === 'OUT_FOR_DELIVERY_DUE') {
             setCurrentScreen('DELIVERY');
+          } else if (params.type === 'SCHEDULED_DELIVERY_REMINDER') {
+            setCurrentScreen('HOME');
           } else {
             setCurrentScreen('ORDER_HISTORY');
           }
@@ -772,6 +783,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     cost?: number;
     price?: number;
     receiptImageUrl?: string;
+    scheduledDeliveryTime?: string;
     isRecurring?: boolean;
     recurringFrequency?: RecurringFrequency;
     nextRecurringDate?: string;
@@ -816,6 +828,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       price: orderPrice,
       location: orderData.location,
       deliveryStatus: orderData.deliveryStatus || 'PENDING',
+      scheduledDeliveryTime: orderData.scheduledDeliveryTime,
+      scheduledReminderSent: false,
       paymentStatus: isPaid ? 'PAID' : 'UNPAID',
       paymentMethod: isPaid ? orderData.paymentMethod || 'CASH' : undefined,
       paymentTime: isPaid ? nowIso : undefined,
@@ -1069,6 +1083,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const updateOrderScheduledDeliveryTime = (orderId: string, scheduledTime?: string) => {
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        const updated = {
+          ...ord,
+          scheduledDeliveryTime: scheduledTime,
+          scheduledReminderSent: false, // Reset reminder flag when scheduled time is set or updated
+        };
+        if (firebaseUser) {
+          updateOrderFirestore(orderId, {
+            scheduledDeliveryTime: scheduledTime || undefined,
+            scheduledReminderSent: false,
+          }).catch((err) => console.error('Error updating scheduled delivery time in Firestore:', err));
+        }
+        return updated;
+      })
+    );
+  };
+
   // Recurring Order Actions
   const toggleRecurringSchedule = (orderId: string, active?: boolean) => {
     setOrders((prev) =>
@@ -1151,18 +1185,83 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return spawnedOrder;
   };
 
-  // Notification Scheduler Logic: Reminds when 'Out for Delivery' is due or 'Recurring Order' is generated
+  // Notification Scheduler Logic:
+  // 1. Reminds seller 30 minutes before a scheduled delivery time for pending orders
+  // 2. Reminds when 'Out for Delivery' is due
+  // 3. Generates or reminds when 'Recurring Order' is due
   const runNotificationSchedulerCheck = () => {
     if (!schedulerConfig.enabled) {
-      return { outForDeliveryRemindersCount: 0, recurringGeneratedCount: 0 };
+      return {
+        outForDeliveryRemindersCount: 0,
+        scheduledDeliveryRemindersCount: 0,
+        recurringGeneratedCount: 0,
+      };
     }
 
     const now = Date.now();
     const todayStr = new Date().toISOString().slice(0, 10);
     let outRemindersCount = 0;
+    let scheduledRemindersCount = 0;
     let recGeneratedCount = 0;
 
-    // 1. Check Out for Delivery due orders
+    // 1. Check Pending orders scheduled delivery time (notifies seller 30 minutes before scheduled delivery)
+    if (schedulerConfig.remindBeforeScheduledDelivery) {
+      const reminderThreshold = schedulerConfig.scheduledDeliveryReminderMinutes || 30;
+      const dueScheduledOrders: { order: Order; remainingMinutes: number }[] = [];
+
+      orders.forEach((ord) => {
+        if (
+          ord.status === 'ACTIVE' &&
+          ord.deliveryStatus === 'PENDING' &&
+          !ord.scheduledReminderSent
+        ) {
+          const timeStr = ord.scheduledDeliveryTime || ord.deliveryDueAt;
+          if (timeStr) {
+            const scheduledMs = new Date(timeStr).getTime();
+            if (!isNaN(scheduledMs)) {
+              const diffMs = scheduledMs - now;
+              const remainingMinutes = Math.round(diffMs / 60000);
+              // Trigger reminder if remaining minutes is <= reminderThreshold (default 30 mins)
+              // and order hasn't passed by more than 60 mins
+              if (remainingMinutes <= reminderThreshold && remainingMinutes >= -60) {
+                dueScheduledOrders.push({ order: ord, remainingMinutes });
+              }
+            }
+          }
+        }
+      });
+
+      if (dueScheduledOrders.length > 0) {
+        scheduledRemindersCount = dueScheduledOrders.length;
+        const dueIds = new Set(dueScheduledOrders.map((d) => d.order.id));
+        setOrders((prev) =>
+          prev.map((ord) => (dueIds.has(ord.id) ? { ...ord, scheduledReminderSent: true } : ord))
+        );
+
+        dueScheduledOrders.forEach(({ order: ord, remainingMinutes }) => {
+          const scheduledDateObj = new Date(ord.scheduledDeliveryTime || ord.deliveryDueAt || '');
+          const timeFormatted = !isNaN(scheduledDateObj.getTime())
+            ? scheduledDateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            : '';
+          const countdownLabel =
+            remainingMinutes > 0
+              ? `còn ${remainingMinutes} phút`
+              : remainingMinutes === 0
+              ? 'đã đến giờ hẹn'
+              : `đã quá giờ hẹn ${Math.abs(remainingMinutes)} phút`;
+
+          pushAlertNotification({
+            type: 'SCHEDULED_DELIVERY_REMINDER',
+            title: `⏰ Sắp đến giờ giao hàng: ${ord.id} (${countdownLabel})`,
+            message: `Đơn của ${ord.customerName} (${ord.location.formattedAddress}) có lịch hẹn giao lúc ${timeFormatted}. Vui lòng chuẩn bị hàng và điều phối shipper!`,
+            orderId: ord.id,
+            priority: 'HIGH',
+          });
+        });
+      }
+    }
+
+    // 2. Check Out for Delivery due orders
     if (schedulerConfig.remindOnOutForDeliveryDue) {
       const dueOutOrders: Order[] = [];
       orders.forEach((ord) => {
@@ -1204,7 +1303,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // 2. Check Recurring orders due today or earlier
+    // 3. Check Recurring orders due today or earlier
     const dueRecurring = orders.filter(
       (o) =>
         o.status === 'ACTIVE' &&
@@ -1246,6 +1345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return {
       outForDeliveryRemindersCount: outRemindersCount,
+      scheduledDeliveryRemindersCount: scheduledRemindersCount,
       recurringGeneratedCount: recGeneratedCount,
     };
   };
@@ -1268,6 +1368,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, [
     schedulerConfig.enabled,
+    schedulerConfig.remindBeforeScheduledDelivery,
+    schedulerConfig.scheduledDeliveryReminderMinutes,
     schedulerConfig.outForDeliveryReminderMinutes,
     schedulerConfig.remindOnOutForDeliveryDue,
     schedulerConfig.autoGenerateRecurringOrders,
@@ -1449,6 +1551,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleRecurringSchedule,
         triggerRecurringOrderInstance,
         updateRecurringFrequency,
+        updateOrderScheduledDeliveryTime,
         markReadyForDelivery,
         markOutForDelivery,
         updateDeliveryStatus,
