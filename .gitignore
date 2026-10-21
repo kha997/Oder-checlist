@@ -7,3 +7,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Firebase local state
+.firebase/
+firestore-debug.log
+firestore-debug.*.log
+firebase-debug.log
+ui-debug.log
+firebase-applet-config.json.backup

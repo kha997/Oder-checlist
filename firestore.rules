@@ -1,21 +1,50 @@
 rules_version = '2';
+
+// ============================================================================
+//  Oder Checklist — Firestore security rules
+//
+//  TRUST MODEL — read this block before changing anything.
+//  ---------------------------------------------------------------------
+//  * Authentication: Google Sign-In. Every rule below requires a signed-in
+//    user with a VERIFIED email (`email_verified == true`), so an
+//    unverified throwaway account cannot touch any data.
+//
+//  * Authorization: deliberately FLAT. Any verified user can read and write
+//    orders, customers, products, condos, stock logs and users.
+//
+//  * LIMITATION — the per-role screen restrictions (ADMIN / KITCHEN /
+//    SHIPPER / CASHIER) shown in the UI are enforced ONLY in the client
+//    (AppContext.canAccessScreen + ROLE_CONFIGS). They are NOT enforced
+//    here, because the staff list in `users` is not linked to Firebase Auth
+//    UIDs (staff are added manually by name/phone/email, they do not sign
+//    in). Consequence: anyone who signs in with a verified Google account
+//    can write directly against the Firestore API, bypassing UI roles.
+//    Do not treat these rules as a role-based authorization boundary.
+//
+//  * Deletes are admin-only. `admins/{uid}` is the intended mechanism; the
+//    bootstrap email below exists only to create the very first admin doc —
+//    after that, manage admins through the `admins` collection.
+//
+//  * These rules intentionally do NOT use `hasOnly(...)` on collections.
+//    The app attaches extra optional fields to orders (priority, notes,
+//    items, recurring schedule, proof-of-delivery photo, ...); a whitelist
+//    would reject legitimate writes. Validation below is a shape/size floor,
+//    not a schema lock.
+// ============================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Global Safety Net: default deny
+    // 0. Global Safety Net: default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
+    // ---------------------------------------------------------------- helpers
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
       return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
     }
 
     function isSignedIn() {
@@ -26,6 +55,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    // Bootstrap admin by email; long-term admin management via `admins/{uid}`.
     function isAdmin() {
       return isVerifiedUser() && (
         request.auth.token.email == 'khafibo@gmail.com' ||
@@ -33,6 +63,7 @@ service cloud.firestore {
       );
     }
 
+    // ------------------------------------------------------------- validators
     function isValidOrder(data) {
       return data.keys().hasAll(['id', 'customerName', 'totalAmount', 'deliveryStatus', 'paymentStatus', 'status', 'createdAt'])
         && data.id is string && data.id.size() <= 64
@@ -77,83 +108,110 @@ service cloud.firestore {
         && data.date is string && data.date.size() <= 64;
     }
 
+    // Staff profiles. `pin` is rejected outright: the PIN was never verified
+    // anywhere in the app, so persisting it would leak a plaintext credential
+    // to every signed-in user for zero security benefit.
     function isValidUserProfile(data) {
-      return (
-        (data.keys().hasAll(['uid', 'displayName']) && data.uid is string && data.displayName is string) ||
-        (data.keys().hasAll(['id', 'name', 'role']) && data.id is string && data.name is string && data.role is string)
-      );
+      return !data.keys().hasAny(['pin'])
+        && (
+          (data.keys().hasAll(['uid', 'displayName']) && data.uid is string && data.displayName is string) ||
+          (data.keys().hasAll(['id', 'name', 'role']) && data.id is string && data.name is string
+            && data.role in ['ADMIN', 'KITCHEN', 'SHIPPER', 'CASHIER'])
+        );
     }
 
-    // Admins collection for role management
+    // Store bank config (settings/bankConfig) used to render VietQR.
+    function isValidSetting(data) {
+      return data.keys().hasAll(['bankBin', 'bankCode', 'bankName', 'accountNumber', 'accountHolder', 'qrTemplate'])
+        && data.bankBin is string && data.bankBin.size() <= 16
+        && data.bankCode is string && data.bankCode.size() <= 16
+        && data.bankName is string && data.bankName.size() <= 128
+        && data.accountNumber is string && data.accountNumber.size() <= 32
+        && data.accountHolder is string && data.accountHolder.size() <= 128
+        && data.qrTemplate in ['compact2', 'compact', 'qr_only', 'print'];
+    }
+
+    function isValidAdmin(data) {
+      return data.keys().hasAll(['uid', 'email'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256;
+    }
+
+    // --------------------------------------------------------------- admins
     match /admins/{adminId} {
       allow get: if isVerifiedUser();
       allow list: if isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Orders collection
-    match /orders/{orderId} {
-      allow get: if isVerifiedUser() && isValidId(orderId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(orderId) && isValidOrder(incoming());
-      allow update: if isVerifiedUser() && isValidId(orderId) && isValidOrder(incoming());
-      allow delete: if isAdmin() && isValidId(orderId);
-    }
-
-    // Customers collection
-    match /customers/{customerId} {
-      allow get: if isVerifiedUser() && isValidId(customerId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(customerId) && isValidCustomer(incoming());
-      allow update: if isVerifiedUser() && isValidId(customerId) && isValidCustomer(incoming());
-      allow delete: if isAdmin() && isValidId(customerId);
-    }
-
-    // Products / Menu collection
-    match /products/{productId} {
-      allow get: if isVerifiedUser() && isValidId(productId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming());
-      allow update: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming());
-      allow delete: if isAdmin() && isValidId(productId);
-    }
-
-    // Condos collection
-    match /condos/{condoId} {
-      allow get: if isVerifiedUser() && isValidId(condoId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(condoId) && isValidCondo(incoming());
-      allow update: if isVerifiedUser() && isValidId(condoId) && isValidCondo(incoming());
-      allow delete: if isAdmin() && isValidId(condoId);
-    }
-
-    // Stock logs collection
-    match /stockLogs/{logId} {
-      allow get: if isVerifiedUser() && isValidId(logId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(logId) && isValidStockLog(incoming());
-      allow update: if isVerifiedUser() && isValidId(logId) && isValidStockLog(incoming());
-      allow delete: if isAdmin() && isValidId(logId);
-    }
-
-    // Users and Staff collection
-    match /users/{userId} {
-      allow get: if isVerifiedUser() && isValidId(userId);
-      allow list: if isVerifiedUser();
-      allow create, update: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming());
-      allow delete: if isAdmin() && isValidId(userId);
-    }
-
-    // Settings collection (e.g. store bank config)
-    match /settings/{settingId} {
-      allow get, list: if isVerifiedUser();
-      allow create, update: if isVerifiedUser();
+      allow create, update: if isAdmin() && isValidAdmin(incoming());
       allow delete: if isAdmin();
     }
 
-    // Connection test collection
+    // --------------------------------------------------------------- orders
+    match /orders/{orderId} {
+      allow get: if isVerifiedUser() && isValidId(orderId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming());
+      allow update: if isVerifiedUser() && isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming());
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // ----------------------------------------------------------- customers
+    match /customers/{customerId} {
+      allow get: if isVerifiedUser() && isValidId(customerId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming());
+      allow update: if isVerifiedUser() && isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming());
+      allow delete: if isAdmin() && isValidId(customerId);
+    }
+
+    // ------------------------------------------------------------- products
+    match /products/{productId} {
+      allow get: if isVerifiedUser() && isValidId(productId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(productId) && productId == incoming().id && isValidProduct(incoming());
+      allow update: if isVerifiedUser() && isValidId(productId) && productId == incoming().id && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productId);
+    }
+
+    // --------------------------------------------------------------- condos
+    match /condos/{condoId} {
+      allow get: if isVerifiedUser() && isValidId(condoId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming());
+      allow update: if isVerifiedUser() && isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming());
+      allow delete: if isAdmin() && isValidId(condoId);
+    }
+
+    // ----------------------------------------------------------- stockLogs
+    match /stockLogs/{logId} {
+      allow get: if isVerifiedUser() && isValidId(logId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(logId) && logId == incoming().id && isValidStockLog(incoming());
+      allow update: if isVerifiedUser() && isValidId(logId) && logId == incoming().id && isValidStockLog(incoming());
+      allow delete: if isAdmin() && isValidId(logId);
+    }
+
+    // --------------------------------------------------------------- users
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId);
+      allow list: if isVerifiedUser();
+      allow create, update: if isVerifiedUser() && isValidId(userId) && userId == incoming().id && isValidUserProfile(incoming());
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // ------------------------------------------------------------- settings
+    // Bank account details are business configuration: readable by the app
+    // (needed to render VietQR), writable by admins only.
+    match /settings/{settingId} {
+      allow get, list: if isVerifiedUser();
+      allow create, update: if isAdmin() && isValidId(settingId) && isValidSetting(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------------------- test
+    // Health-check document written by src/firebase/config.ts on boot. It is
+    // NOT a public scratchpad — anonymous read/write is no longer allowed.
     match /test/{docId} {
-      allow read, write: if true;
+      allow read, write: if isVerifiedUser();
     }
   }
 }
