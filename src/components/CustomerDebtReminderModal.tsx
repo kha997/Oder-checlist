@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, Order } from '../types';
+import { type Customer, type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   cleanPhoneNumber,
@@ -8,7 +8,7 @@ import {
   getTelUrl,
   getSmsUrl,
   getOverdueReminderTemplates,
-  OverdueReminderTemplate,
+  type OverdueReminderTemplate,
   generateCustomerDebtVietQrUrl,
 } from '../utils/vietqr';
 import {

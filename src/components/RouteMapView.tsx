@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Order, OrderPriority, getOrderTagColor } from '../types';
+import { type Order, type OrderPriority, getOrderTagColor } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   extractFloorNumber,

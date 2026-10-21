@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Order, OrderPriority } from '../types';
+import { type Order, type OrderPriority } from '../types';
 import { formatVND } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { downloadCsv, escapeCsvCell } from '../utils/csvExport';

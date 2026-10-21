@@ -13,7 +13,7 @@ import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,
   getSpeechErrorMessage,
-  ISpeechRecognition,
+  type ISpeechRecognition,
 } from '../utils/speechRecognition';
 
 interface VoiceNoteDictationButtonProps {

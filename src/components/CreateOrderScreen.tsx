@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
-  LocationType,
-  PaymentMethod,
-  OrderItem,
-  OrderLocation,
-  Customer,
+  type LocationType,
+  type PaymentMethod,
+  type OrderItem,
+  type OrderLocation,
+  type Customer,
   PREDEFINED_ORDER_TAGS,
   getOrderTagColor,
-  OrderPriority,
+  type OrderPriority,
   ORDER_PRIORITY_OPTIONS,
-  DeliveryStatus,
-  RecurringFrequency,
+  type DeliveryStatus,
+  type RecurringFrequency,
   RECURRING_FREQUENCY_OPTIONS,
   calculateNextRecurringDate,
 } from '../types';
 import { formatVND } from '../utils/storage';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { GooglePlacesAddressLookup } from './GooglePlacesAddressLookup';
-import { GooglePlaceSuggestion } from '../utils/googlePlacesService';
+import { type GooglePlaceSuggestion } from '../utils/googlePlacesService';
 import { VietQRModal } from './VietQRModal';
 import { VoiceNoteDictationButton } from './VoiceNoteDictationButton';
 import { VoiceOrderDictationModal } from './VoiceOrderDictationModal';

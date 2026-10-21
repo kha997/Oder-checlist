@@ -1,31 +1,31 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
 import {
-  Product,
-  Customer,
-  CondoLocation,
-  Order,
-  StockLog,
-  ScreenType,
-  PaymentMethod,
-  OrderItem,
-  OrderLocation,
-  OrderPriority,
-  DeliveryStatus,
-  RecurringFrequency,
+  type Product,
+  type Customer,
+  type CondoLocation,
+  type Order,
+  type StockLog,
+  type ScreenType,
+  type PaymentMethod,
+  type OrderItem,
+  type OrderLocation,
+  type OrderPriority,
+  type DeliveryStatus,
+  type RecurringFrequency,
   calculateNextRecurringDate,
-  AppNotification,
-  NotificationType,
-  NotificationSchedulerConfig,
+  type AppNotification,
+  type NotificationType,
+  type NotificationSchedulerConfig,
   DEFAULT_SCHEDULER_CONFIG,
   getOrderPrice,
   getOrderCost,
-  UserRole,
-  RoleConfig,
+  type UserRole,
+  type RoleConfig,
   ROLE_CONFIGS,
-  StaffUser,
-  StoreBankConfig,
+  type StaffUser,
+  type StoreBankConfig,
   DEFAULT_BANK_CONFIG,
-  CustomerDebtSummary,
+  type CustomerDebtSummary,
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -46,7 +46,7 @@ import {
   requestBrowserNotificationPermission,
   sendBrowserNotification,
 } from '../utils/browserNotification';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, signInWithPopup, signOut, googleProvider } from '../firebase/config';
 import {
   subscribeToFirebaseCollections,

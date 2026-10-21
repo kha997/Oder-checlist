@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Product } from '../types';
+import { type Product } from '../types';
 import {
   ArrowLeft,
   Boxes,

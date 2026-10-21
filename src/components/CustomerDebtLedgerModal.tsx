@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, Order, PaymentMethod } from '../types';
+import { type Customer, type Order, type PaymentMethod } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   cleanPhoneNumber,

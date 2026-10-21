@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   searchOrders,
-  OrderSearchMatch,
+  type OrderSearchMatch,
   getHighlightedTextSegments,
 } from '../utils/searchHelper';
 import { formatVND } from '../utils/storage';
-import { Order } from '../types';
+import { type Order } from '../types';
 import {
   Search,
   X,

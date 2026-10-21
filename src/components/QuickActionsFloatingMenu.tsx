@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, DeliveryStatus } from '../types';
+import { type Order, type DeliveryStatus } from '../types';
 import { DeliveryReceiptScannerModal } from './DeliveryReceiptScannerModal';
 import { QuickCreateOrderModal } from './QuickCreateOrderModal';
 import { OrderDetailModal } from './OrderDetailModal';
@@ -52,10 +52,12 @@ export const QuickActionsFloatingMenu: React.FC = () => {
 
   // Clear notice after 3 seconds
   useEffect(() => {
-    if (actionSuccessNotice) {
-      const timer = setTimeout(() => setActionSuccessNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
+    const timer = actionSuccessNotice
+      ? setTimeout(() => setActionSuccessNotice(null), 3000)
+      : undefined;
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [actionSuccessNotice]);
 
   // Orders pool

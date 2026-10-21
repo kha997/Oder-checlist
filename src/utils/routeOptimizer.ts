@@ -1,4 +1,4 @@
-import { Order } from '../types';
+import { type Order } from '../types';
 
 /**
  * Extracts numeric floor from condo location or address string (e.g. "B-20-10" -> 20)

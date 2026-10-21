@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Order } from '../types';
+import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   cleanPhoneNumber,

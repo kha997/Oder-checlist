@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod, PREDEFINED_ORDER_TAGS, OrderPriority, ORDER_PRIORITY_OPTIONS } from '../types';
+import { type Order, type PaymentMethod, PREDEFINED_ORDER_TAGS, type OrderPriority, ORDER_PRIORITY_OPTIONS } from '../types';
 import { ExportOrderReportModal } from './ExportOrderReportModal';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
 import {

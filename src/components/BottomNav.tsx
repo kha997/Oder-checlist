@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { ScreenType } from '../types';
+import { type ScreenType } from '../types';
 import { Home, PlusCircle, Bike, Wallet, BarChart3, Boxes, History } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {

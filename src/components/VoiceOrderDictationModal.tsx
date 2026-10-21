@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product, CondoLocation } from '../types';
+import { type Product, type CondoLocation } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   Mic,
@@ -25,8 +25,8 @@ import {
   getSpeechErrorMessage,
   parseVoiceOrder,
   VOICE_ORDER_SAMPLE_PHRASES,
-  ParsedVoiceOrder,
-  ISpeechRecognition,
+  type ParsedVoiceOrder,
+  type ISpeechRecognition,
 } from '../utils/speechRecognition';
 
 interface VoiceOrderDictationModalProps {

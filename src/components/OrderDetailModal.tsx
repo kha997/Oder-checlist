@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod, getOrderCost, getOrderPrice, getOrderProfit, Customer } from '../types';
+import { type Order, type PaymentMethod, getOrderCost, getOrderPrice, getOrderProfit, type Customer } from '../types';
 import { ProofOfDeliveryCameraModal } from './ProofOfDeliveryCameraModal';
 import { VietQRModal } from './VietQRModal';
 import { ShipperQuickContactModal } from './ShipperQuickContactModal';

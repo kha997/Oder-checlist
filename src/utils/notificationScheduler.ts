@@ -1,4 +1,4 @@
-import { Order, NotificationSchedulerConfig, calculateNextRecurringDate } from '../types';
+import { type Order, type NotificationSchedulerConfig, calculateNextRecurringDate } from '../types';
 
 export interface DeliveryDueStatus {
   elapsedMinutes: number;

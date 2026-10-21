@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { VIETNAM_POPULAR_BANKS, BankDirectoryItem, generateVietQrUrl } from '../utils/vietqr';
+import { VIETNAM_POPULAR_BANKS, type BankDirectoryItem, generateVietQrUrl } from '../utils/vietqr';
 import {
   CreditCard,
   Building2,

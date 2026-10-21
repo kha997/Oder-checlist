@@ -1,4 +1,4 @@
-import { StoreBankConfig, Order, Customer } from '../types';
+import { type StoreBankConfig, type Order, type Customer } from '../types';
 import { formatVND } from './storage';
 import { removeVietnameseTones } from './searchHelper';
 

@@ -16,8 +16,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import {
-  GooglePlaceSuggestion,
-  PlaceType,
+  type GooglePlaceSuggestion,
+  type PlaceType,
   searchStandardizedPlaces,
   formatStandardizedDeliveryLocation,
   STANDARDIZED_PLACES_DATABASE,

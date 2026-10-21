@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, LocationType, Order } from '../types';
+import { type Customer, type LocationType, type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
 import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';

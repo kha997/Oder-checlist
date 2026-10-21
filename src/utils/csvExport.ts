@@ -1,4 +1,4 @@
-import { Order, Product } from '../types';
+import { type Order, type Product } from '../types';
 
 /**
  * Escapes a cell according to RFC 4180

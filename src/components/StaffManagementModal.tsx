@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole, ROLE_CONFIGS, StaffUser } from '../types';
+import { type UserRole, ROLE_CONFIGS, type StaffUser } from '../types';
 import {
   Users,
   Shield,

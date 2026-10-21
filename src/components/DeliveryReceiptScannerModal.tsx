@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod } from '../types';
+import { type Order, type PaymentMethod } from '../types';
 import { playNotificationSound } from '../utils/soundNotification';
 import {
   Camera,

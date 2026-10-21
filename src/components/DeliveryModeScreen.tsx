@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PREDEFINED_ORDER_TAGS, OrderPriority } from '../types';
+import { type Order, PREDEFINED_ORDER_TAGS, type OrderPriority } from '../types';
 import { ExportOrderReportModal } from './ExportOrderReportModal';
 import { RouteMapView } from './RouteMapView';
 import { OrderDetailModal } from './OrderDetailModal';

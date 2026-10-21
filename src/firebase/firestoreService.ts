@@ -6,10 +6,10 @@ import {
   deleteDoc,
   onSnapshot,
   getDocs,
-  Unsubscribe,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from './config';
-import { Order, Customer, Product, CondoLocation, StockLog, StaffUser, StoreBankConfig } from '../types';
+import { type Order, type Customer, type Product, type CondoLocation, type StockLog, type StaffUser, type StoreBankConfig } from '../types';
 
 export interface FirebaseSyncCallbacks {
   onOrdersChange?: (orders: Order[]) => void;

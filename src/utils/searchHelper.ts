@@ -1,4 +1,4 @@
-import { Order } from '../types';
+import { type Order } from '../types';
 
 /**
  * Remove Vietnamese accents/diacritics for flexible search

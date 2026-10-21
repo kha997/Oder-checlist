@@ -5,7 +5,7 @@ import { QuickActionsFloatingMenu } from './QuickActionsFloatingMenu';
 import { OrderDetailModal } from './OrderDetailModal';
 import { ExportOrderReportModal } from './ExportOrderReportModal';
 import { PrintManifestModal } from './PrintManifestModal';
-import { Order, getOrderTagColor } from '../types';
+import { type Order, getOrderTagColor } from '../types';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import {

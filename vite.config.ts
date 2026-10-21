@@ -1,8 +1,8 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
+import path from 'node:path';
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
@@ -16,7 +16,8 @@ export default defineConfig(() => {
           id: '/',
           name: 'Oder Checklist - Simple Order Management',
           short_name: 'OderCheck',
-          description: 'Mobile-first order checklist and delivery management for small sellers and condominium deliveries.',
+          description:
+            'Mobile-first order checklist and delivery management for small sellers and condominium deliveries.',
           theme_color: '#059669',
           background_color: '#f8fafc',
           display: 'standalone',
@@ -54,7 +55,7 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {

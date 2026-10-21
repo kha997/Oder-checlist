@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Order, Product, OrderPriority } from '../types';
+import { type Order, type Product, type OrderPriority } from '../types';
 import { formatVND } from '../utils/storage';
 import { exportElementToPdf, downloadHtmlReport } from '../utils/pdfExport';
 import { exportCurrentOrderListCsv, exportSalesOrdersCsv, exportConsolidatedReportCsv } from '../utils/csvExport';

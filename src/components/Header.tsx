@@ -7,7 +7,7 @@ import { FirebaseSyncModal } from './FirebaseSyncModal';
 import { StaffManagementModal } from './StaffManagementModal';
 import { BankSettingsModal } from './BankSettingsModal';
 import { GlobalSearchBar } from './GlobalSearchBar';
-import { Order } from '../types';
+import { type Order } from '../types';
 import {
   ClipboardCheck,
   UserCheck,

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { PaymentMethod, OrderPriority, Order, Customer } from '../types';
+import { type PaymentMethod, type OrderPriority, type Order, type Customer } from '../types';
 import { VietQRModal } from './VietQRModal';
 import { ShipperQuickContactModal } from './ShipperQuickContactModal';
 import { BankSettingsModal } from './BankSettingsModal';

@@ -2,17 +2,17 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
 import {
-  OrderItem,
-  OrderLocation,
-  OrderPriority,
-  PaymentMethod,
+  type OrderItem,
+  type OrderLocation,
+  type OrderPriority,
+  type PaymentMethod,
   ORDER_PRIORITY_OPTIONS,
-  RecurringFrequency,
+  type RecurringFrequency,
   RECURRING_FREQUENCY_OPTIONS,
   calculateNextRecurringDate,
 } from '../types';
 import { GooglePlacesAddressLookup } from './GooglePlacesAddressLookup';
-import { GooglePlaceSuggestion } from '../utils/googlePlacesService';
+import { type GooglePlaceSuggestion } from '../utils/googlePlacesService';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { VoiceNoteDictationButton } from './VoiceNoteDictationButton';
 import {

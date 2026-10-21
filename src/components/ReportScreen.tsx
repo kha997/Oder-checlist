@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, getOrderCost, getOrderPrice, getOrderProfit } from '../types';
+import { type Order, getOrderCost, getOrderPrice, getOrderProfit } from '../types';
 import {
   exportSalesOrdersCsv,
   exportInventoryCsv,
@@ -10,7 +10,7 @@ import {
 } from '../utils/csvExport';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { OrderDetailModal } from './OrderDetailModal';
-import { ExportOrderReportModal, ExportDocumentType } from './ExportOrderReportModal';
+import { ExportOrderReportModal, type ExportDocumentType } from './ExportOrderReportModal';
 import {
   ArrowLeft,
   BarChart3,
