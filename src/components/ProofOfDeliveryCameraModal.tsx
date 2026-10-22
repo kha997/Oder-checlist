@@ -11,6 +11,235 @@ interface ProofOfDeliveryCameraModalProps {
   onSuccess?: (orderId: string, photoUrl: string) => void;
 }
 
+/**
+ * Longest edge for each captured proof-of-delivery photo.
+ *
+ * Firestore rejects any document over 1,048,576 bytes. The POD image is stored
+ * inline on the order as `receiptImageUrl`, so the encoded data URL counts
+ * against that budget. Measured on a high-entropy 12 MP frame (3024x4032, what
+ * a phone camera actually produces) the data URL is ~9 MB at JPEG q=0.85 and
+ * ~3 MB at 4032x3024 — both far past the limit, and the write would simply fail.
+ * 1600 px keeps a legible watermark, verifies a package left at a door, and
+ * lands around 200-450 kB.
+ */
+const POD_MAX_EDGE = 1600;
+
+/** Quality steps tried until the encoded image fits the Firestore budget. */
+const POD_QUALITY_STEPS = [0.85, 0.75, 0.65, 0.55];
+
+/**
+ * Budget for the encoded image, well under Firestore's 1,048,576-byte hard
+ * limit. The order carries other fields besides the photo, and the limit applies
+ * to the whole document, not just this field.
+ */
+const POD_MAX_BYTES = 700_000;
+
+/**
+ * Shrink factor applied per pass when quality alone does not fit the budget.
+ *
+ * Dimensions are the only lever that reliably converges: quality barely moves a
+ * high-entropy frame (the same 12 MP frame above is still ~3 MB at q=0.55).
+ *
+ * The encoder does not iterate a fixed list of sizes. It keeps shrinking the
+ * dimensions until the encoded result fits, because a fixed list can only be as
+ * good as the worst case it was measured against, and "it fit the inputs I tried"
+ * is not the guarantee that matters here — the write must not be rejected.
+ */
+const POD_SHRINK_FACTOR = 0.75;
+
+/**
+ * Floor for the long edge, so the loop cannot shrink a photo into uselessness.
+ *
+ * The loop is expected to stop long before this. It is a safety stop, not the
+ * mechanism: convergence comes from the budget check at every step. At this size
+ * even an incompressible frame of noise encodes to well under the budget, so the
+ * floor is not what makes the result fit.
+ */
+const POD_MIN_EDGE = 320;
+
+/**
+ * Hard cap on passes, in case a future change to the budget or the quality ladder
+ * makes the loop fail to converge. Without it a non-converging encoder would
+ * freeze the UI on the main thread.
+ */
+const POD_MAX_PASSES = 12;
+
+/**
+ * Render a source (video frame or loaded image) into a canvas capped at
+ * POD_MAX_EDGE, then encode it as JPEG, stepping quality down — and, only if that
+ * is not enough, shrinking the dimensions — until the result fits the budget.
+ *
+ * Returns null only when a 2D context is unavailable or the output never fits, so
+ * the caller can fall back to the original image rather than storing something
+ * that would be rejected.
+ */
+function encodePodPhoto(
+  draw: (ctx: CanvasRenderingContext2D, width: number, height: number, canvas: HTMLCanvasElement) => void,
+  sourceWidth: number,
+  sourceHeight: number
+): string | null {
+  // A corrupt or not-yet-decoded image can report NaN/0 dimensions, which would
+  // propagate into the canvas and throw on drawImage.
+  const firstPass = podOutputSize(sourceWidth, sourceHeight);
+  if (!firstPass) return null;
+
+  const canvas = document.createElement('canvas');
+  let { width, height } = firstPass;
+
+  for (let pass = 0; pass < POD_MAX_PASSES; pass++) {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Resizing a canvas resets its state, so set smoothing on every pass.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    draw(ctx, width, height, canvas);
+
+    let dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[0]);
+    for (let i = 1; i < POD_QUALITY_STEPS.length && dataUrlByteSize(dataUrl) > POD_MAX_BYTES; i++) {
+      dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[i]);
+    }
+
+    if (dataUrlByteSize(dataUrl) <= POD_MAX_BYTES) return dataUrl;
+
+    // Still too large, so shrink and try again — unless the floor is reached, in
+    // which case no further pass would help.
+    if (Math.max(width, height) <= POD_MIN_EDGE) return null;
+    width = Math.max(1, Math.round(width * POD_SHRINK_FACTOR));
+    height = Math.max(1, Math.round(height * POD_SHRINK_FACTOR));
+  }
+
+  return null;
+}
+
+/**
+ * Draw the logistics proof-of-delivery watermark banner, scaled to the output
+ * size so the text stays legible whatever the photo dimensions are.
+ *
+ * Clamped to the canvas: an extreme aspect ratio can produce a very short image
+ * (the encoder's floor is on the *long* edge, so a 400x8 output is possible), and
+ * a banner taller than the canvas would be drawn at a negative y and vanish.
+ */
+function drawPodWatermark(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  title: string,
+  subtitle: string
+): void {
+  const bannerHeight = Math.min(height, Math.max(56, Math.round(height * 0.09)));
+  const bannerTop = Math.max(0, height - bannerHeight);
+  const padding = Math.min(24, Math.round(width * 0.03));
+  const titleSize = Math.max(10, Math.round(bannerHeight * 0.34));
+  const subtitleSize = Math.max(8, Math.round(bannerHeight * 0.25));
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+  ctx.fillRect(0, bannerTop, width, bannerHeight);
+
+  // Green accent stripe
+  ctx.fillStyle = '#10b981';
+  ctx.fillRect(0, bannerTop, Math.max(3, Math.round(width * 0.006)), bannerHeight);
+
+  // Only draw text when the banner is tall enough to hold it.
+  if (bannerHeight >= 28) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${titleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(title, padding, bannerTop + Math.round(bannerHeight * 0.42));
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = `${subtitleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(subtitle, padding, bannerTop + Math.round(bannerHeight * 0.78));
+  }
+}
+
+/** Timestamp pair used on every watermark. */
+function podTimestamp(includeSeconds: boolean): { date: string; time: string } {
+  const now = new Date();
+  return {
+    date: now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    time: now.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(includeSeconds ? { second: '2-digit' } : {}),
+    }),
+  };
+}
+
+// Matches any data URL up to the `base64,` marker, including parameterised media
+// types such as `data:image/jpeg;charset=utf-8;base64,`.
+const DATA_URL_PREFIX_RE = /^data:[^,]*,/;
+
+/**
+ * Encoded byte size of a data URL without decoding it.
+ *
+ * Firestore's limit applies to the stored bytes, not UTF-16 code units, so the
+ * budget is checked in real bytes rather than by string length.
+ */
+export function dataUrlByteSize(dataUrl: string): number {
+  const base64 = dataUrl.replace(DATA_URL_PREFIX_RE, '');
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/** Firestore's hard per-document limit, in bytes. */
+export const FIRESTORE_DOC_LIMIT_BYTES = 1_048_576;
+
+/**
+ * Tunables of the POD encoder, exported so the budget contract can be tested
+ * without rendering the component or needing a real canvas.
+ */
+export const POD_ENCODING = {
+  maxEdge: POD_MAX_EDGE,
+  minEdge: POD_MIN_EDGE,
+  maxBytes: POD_MAX_BYTES,
+  shrinkFactor: POD_SHRINK_FACTOR,
+  maxPasses: POD_MAX_PASSES,
+  qualitySteps: POD_QUALITY_STEPS,
+} as const;
+
+/**
+ * First-pass output size for a source image: capped at `maxEdge` on the long
+ * edge, never upscaled.
+ *
+ * Exported for testing. Returns null for a source whose dimensions are unusable
+ * (NaN/0/Infinity), which a badly decoded image can report.
+ */
+export function podOutputSize(
+  sourceWidth: number,
+  sourceHeight: number
+): { width: number; height: number } | null {
+  const valid = (n: number) => Number.isFinite(n) && n >= 1;
+  if (!valid(sourceWidth) || !valid(sourceHeight)) return null;
+
+  const scale = Math.min(1, POD_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  return {
+    width: Math.max(1, Math.round(sourceWidth * scale)),
+    height: Math.max(1, Math.round(sourceHeight * scale)),
+  };
+}
+
+/**
+ * The size sequence the encoder walks when quality alone does not fit the budget.
+ *
+ * Exported for testing: it must reach the floor, shrink monotonically, and stop.
+ */
+export function podShrinkSequence(startWidth: number, startHeight: number): Array<{ width: number; height: number }> {
+  const sizes: Array<{ width: number; height: number }> = [];
+  let width = startWidth;
+  let height = startHeight;
+
+  for (let pass = 0; pass < POD_MAX_PASSES; pass++) {
+    sizes.push({ width, height });
+    if (Math.max(width, height) <= POD_MIN_EDGE) break;
+    width = Math.max(1, Math.round(width * POD_SHRINK_FACTOR));
+    height = Math.max(1, Math.round(height * POD_SHRINK_FACTOR));
+  }
+
+  return sizes;
+}
+
 export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProps> = ({
   isOpen,
   onClose,
@@ -20,7 +249,6 @@ export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProp
   const { markDelivered, attachReceiptToOrder, soundEnabled } = useApp();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -145,7 +373,7 @@ export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProp
 
   // Capture Photo with Timestamp & Order Watermark
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current) return;
     setIsCapturing(true);
 
     try {
@@ -155,59 +383,33 @@ export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProp
     } catch {}
 
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 960;
-
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Draw main video frame
-    ctx.drawImage(video, 0, 0, width, height);
-
-    // Apply logistics proof-of-delivery watermark banner
-    const now = new Date();
-    const dateFormatted = now.toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    const timeFormatted = now.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
-    const bannerHeight = Math.max(70, Math.round(height * 0.08));
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-    ctx.fillRect(0, height - bannerHeight, width, bannerHeight);
-
-    // Green accent stripe
-    ctx.fillStyle = '#10b981';
-    ctx.fillRect(0, height - bannerHeight, 8, bannerHeight);
-
-    // Text: Order info, Address, and Timestamp
-    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    const orderTitle = order
+    const { date, time } = podTimestamp(true);
+    const title = order
       ? `📦 ĐƠN ${order.id} • ${order.customerName}`
       : '📦 XÁC NHẬN GIAO HÀNG (PROOF OF DELIVERY)';
-    ctx.fillText(orderTitle, 24, height - bannerHeight + 32);
+    const subtitle = [
+      order ? `📍 ${order.location.formattedAddress} (${order.location.condoName || ''})` : '',
+      `⏰ ${time} ${date}`,
+    ]
+      .filter(Boolean)
+      .join('  |  ');
 
-    ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#cbd5e1';
-    const locationInfo = order ? `📍 ${order.location.formattedAddress} (${order.location.condoName || ''})` : '';
-    const timeInfo = `⏰ ${timeFormatted} ${dateFormatted}`;
-    ctx.fillText(`${locationInfo}  |  ${timeInfo}`, 24, height - bannerHeight + 60);
+    const dataUrl = encodePodPhoto(
+      (ctx, width, height) => {
+        ctx.drawImage(video, 0, 0, width, height);
+        drawPodWatermark(ctx, width, height, title, subtitle);
+      },
+      video.videoWidth || 1280,
+      video.videoHeight || 960
+    );
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    setCapturedImage(dataUrl);
+    if (dataUrl) {
+      setCapturedImage(dataUrl);
+    }
     setIsCapturing(false);
     stopCamera();
   };
+
 
   // Fallback File Upload (Mobile Native Camera or Gallery)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,61 +418,37 @@ export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProp
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      const source = event.target?.result as string | undefined;
+      if (!source) return;
+
       const img = new Image();
       img.onload = () => {
-        if (!canvasRef.current) {
-          setCapturedImage(event.target?.result as string);
-          return;
-        }
-
-        const canvas = canvasRef.current;
-        const width = img.width;
-        const height = img.height;
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          setCapturedImage(event.target?.result as string);
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Watermark
-        const now = new Date();
-        const dateFormatted = now.toLocaleDateString('vi-VN', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        });
-        const timeFormatted = now.toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-
-        const bannerHeight = Math.max(70, Math.round(height * 0.08));
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-        ctx.fillRect(0, height - bannerHeight, width, bannerHeight);
-
-        ctx.fillStyle = '#10b981';
-        ctx.fillRect(0, height - bannerHeight, 8, bannerHeight);
-
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillStyle = '#ffffff';
-        const orderTitle = order
+        const { date, time } = podTimestamp(false);
+        const title = order
           ? `📦 ĐƠN ${order.id} • ${order.customerName}`
           : '📦 XÁC NHẬN GIAO HÀNG';
-        ctx.fillText(orderTitle, 24, height - bannerHeight + 32);
+        const subtitle = [
+          order ? `📍 ${order.location.formattedAddress}` : '',
+          `⏰ ${time} ${date}`,
+        ]
+          .filter(Boolean)
+          .join('  |  ');
 
-        ctx.font = '18px sans-serif';
-        ctx.fillStyle = '#cbd5e1';
-        const locationInfo = order ? `📍 ${order.location.formattedAddress}` : '';
-        ctx.fillText(`${locationInfo}  |  ${timeFormatted} ${dateFormatted}`, 24, height - bannerHeight + 60);
+        // Same 1600 px cap as the live-camera path: a gallery pick can be a
+        // 12 MP frame whose data URL would exceed Firestore's document limit.
+        const dataUrl = encodePodPhoto(
+          (ctx, width, height) => {
+            ctx.drawImage(img, 0, 0, width, height);
+            drawPodWatermark(ctx, width, height, title, subtitle);
+          },
+          img.width,
+          img.height
+        );
 
-        setCapturedImage(canvas.toDataURL('image/jpeg', 0.85));
+        setCapturedImage(dataUrl ?? source);
       };
-      img.src = event.target?.result as string;
+      img.onerror = () => setCapturedImage(source);
+      img.src = source;
     };
     reader.readAsDataURL(file);
     stopCamera();
@@ -307,9 +485,6 @@ export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProp
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4">
-      {/* Hidden canvas for snapshot watermark composition */}
-      <canvas ref={canvasRef} className="hidden" />
-
       {/* Hidden native camera/file input */}
       <input
         ref={fileInputRef}

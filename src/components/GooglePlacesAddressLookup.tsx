@@ -7,7 +7,7 @@ import {
   formatStandardizedDeliveryLocation,
   STANDARDIZED_PLACES_DATABASE,
 } from '../utils/googlePlacesService';
-import { loadFromStorage, saveToStorage } from '../utils/storage';
+import { loadFromStorage, trySaveToStorage } from '../utils/storage';
 
 const RECENT_PLACES_STORAGE_KEY = 'oder_checklist_recent_places_v1';
 
@@ -88,11 +88,13 @@ export const GooglePlacesAddressLookup: React.FC<GooglePlacesAddressLookupProps>
       setCondoBlock(place.suggestedBlocks[0]);
     }
 
-    // Save to recents
+    // Save to recents. Best-effort by design: this is a convenience cache and the
+    // write happens inside a state updater, where a throw would break the render
+    // pass for data the user can simply retype.
     setRecentPlaces((prev) => {
       const filtered = prev.filter((p) => p.placeId !== place.placeId);
       const updated = [place, ...filtered].slice(0, 5);
-      saveToStorage(RECENT_PLACES_STORAGE_KEY, updated);
+      trySaveToStorage(RECENT_PLACES_STORAGE_KEY, updated);
       return updated;
     });
 

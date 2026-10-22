@@ -461,12 +461,132 @@ export function loadFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * Raised when the browser refuses to persist a value — almost always
+ * `QuotaExceededError` on a full localStorage (mobile Safari gives ~5 MB for the
+ * whole origin, and POD photos and long order histories eat it fast).
+ *
+ * Previously the failure was swallowed by a console.error, so a save that never
+ * happened looked identical to a successful one: the UI kept the change in React
+ * state and the user only discovered the loss after a reload.
+ */
+export class StorageQuotaError extends Error {
+  readonly key: string;
+  readonly quotaExceeded: boolean;
+
+  constructor(key: string, quotaExceeded: boolean, cause: unknown) {
+    super(
+      quotaExceeded
+        ? `Bộ nhớ trình duyệt đã đầy, không lưu được "${key}". Dữ liệu vừa thay đổi sẽ mất khi tải lại trang.`
+        : `Không lưu được "${key}" vào bộ nhớ trình duyệt.`
+    );
+    this.name = 'StorageQuotaError';
+    this.key = key;
+    this.quotaExceeded = quotaExceeded;
+    this.cause = cause;
+  }
+}
+
+const isQuotaExceeded = (e: unknown): boolean =>
+  e instanceof DOMException &&
+  // Firefox and Chrome/Safari disagree on which code they report.
+  (e.name === 'QuotaExceededError' ||
+    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    e.code === 22 ||
+    e.code === 1014);
+
+/**
+ * Persist a value to localStorage.
+ *
+ * Throws `StorageQuotaError` instead of failing silently — callers that care
+ * about durability should catch it and tell the user.
+ */
 export function saveToStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
+    const quota = isQuotaExceeded(e);
     console.error(`Failed to save to storage "${key}":`, e);
+    throw new StorageQuotaError(key, quota, e);
   }
+}
+
+/**
+ * Best-effort variant of `saveToStorage` for callers that cannot surface an
+ * error to the user (background sync effects, non-critical UI preferences).
+ *
+ * Returns the failure instead of throwing, so an effect that saves one slice of
+ * state can never abort the effects saving the others.
+ */
+export function trySaveToStorage<T>(key: string, value: T): StorageQuotaError | null {
+  try {
+    saveToStorage(key, value);
+    return null;
+  } catch (e) {
+    return e instanceof StorageQuotaError ? e : new StorageQuotaError(key, false, e);
+  }
+}
+
+/**
+ * How often the user is told that storage is full, in milliseconds.
+ *
+ * One full-storage write fails several state slices in the same commit, and a
+ * stack of identical toasts is worse than one warning.
+ */
+export const STORAGE_WARNING_INTERVAL_MS = 30_000;
+
+/**
+ * Build a throttled "storage failed" reporter.
+ *
+ * Extracted from the app context so the warning rule can be tested directly:
+ * whether the user is told about a lost write is the whole point of this feature,
+ * and it is otherwise only reachable through a rendered React tree.
+ *
+ * A `QuotaExceededError` is reported regardless of the throttle, because that is
+ * the failure the user has to act on and it is reached through the same window
+ * as any other slice: the effects run in declaration order, so a redundant write
+ * of a low-value slice can fail first and would otherwise swallow the warning.
+ *
+ * @param onFailure invoked with the first failure in each window.
+ */
+export function createStorageFailureReporter(
+  onFailure: (failure: StorageQuotaError) => void,
+  intervalMs: number = STORAGE_WARNING_INTERVAL_MS,
+  now: () => number = Date.now
+): (failure: StorageQuotaError) => void {
+  let lastReportedAt = Number.NEGATIVE_INFINITY;
+  // A quota failure is urgent enough to be reported even inside a window that
+  // another failure opened; this keeps that to one extra message per window.
+  let quotaReportedInWindow = false;
+
+  return (failure: StorageQuotaError) => {
+    const current = now();
+    const inWindow = current - lastReportedAt < intervalMs;
+
+    if (inWindow) {
+      if (!failure.quotaExceeded || quotaReportedInWindow) return;
+      quotaReportedInWindow = true;
+      onFailure(failure);
+      return;
+    }
+
+    lastReportedAt = current;
+    quotaReportedInWindow = failure.quotaExceeded;
+    onFailure(failure);
+  };
+}
+
+/**
+ * User-facing message for a failed write.
+ *
+ * Written for the person holding the phone: it says what was lost and what to do
+ * about it. `key` is only named in the non-quota case, where it helps diagnosis
+ * and the user cannot act on it anyway.
+ */
+export function storageFailureMessage(failure: StorageQuotaError): string {
+  return failure.quotaExceeded
+    ? 'Thay đổi vừa rồi CHƯA được lưu và sẽ mất khi tải lại trang. Hãy xoá ảnh giao hàng cũ hoặc xuất dữ liệu ra file để giải phóng bộ nhớ.'
+    : `Không lưu được "${failure.key}". Thay đổi vừa rồi có thể sẽ mất khi tải lại trang.`;
 }
 
 export function formatVND(amount: number): string {

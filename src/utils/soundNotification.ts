@@ -31,6 +31,7 @@ export type SoundType =
   | 'OUT_FOR_DELIVERY_DUE'
   | 'SCHEDULED_DELIVERY_REMINDER'
   | 'RECURRING_ORDER_GENERATED'
+  | 'STORAGE_FULL'
   | 'SYSTEM';
 
 /**
@@ -209,7 +210,7 @@ export function playNotificationSound(type: SoundType): void {
 
       osc.start(now);
       osc.stop(now + 0.3);
-    } else if (type === 'SYSTEM') {
+    } else if (type === 'SYSTEM' || type === 'STORAGE_FULL') {
       // Gentle soft chime
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
