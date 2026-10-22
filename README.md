@@ -71,7 +71,7 @@ npm run verify      # chạy toàn bộ cổng kiểm tra bên dưới, theo th�
 | Lệnh | Nội dung |
 | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` với `strict` + `noUnusedLocals` / `noUnusedParameters` |
-| `npm test` | 69 unit test trên logic thuần (tìm kiếm, CSV, lộ trình, VietQR, lưu trữ, kích thước ảnh POD) |
+| `npm test` | 94 unit test trên logic thuần (tìm kiếm, CSV, lộ trình, VietQR, lưu trữ, kích thước ảnh POD) |
 | `npm run test:rules` | 23 assertion trên `firestore.rules`, chạy thật với Firestore Emulator |
 | `npm run test:palette` | Kiểm tra CSS đã build không còn `oklch()` / `in oklab` và đối chiếu bảng màu với Tailwind |
 | `npm run build` | Build production, cảnh báo nếu chunk vượt 700 kB |
@@ -153,9 +153,9 @@ Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng
 Hai chỗ dưới đây trước kia thất bại trong im lặng. Nay chúng báo lỗi rõ ràng:
 
 - **`localStorage` đầy.** `saveToStorage` ném `StorageQuotaError` thay vì chỉ ghi log. Mọi thao tác lưu dữ liệu người dùng đi qua một hàm `persist()` trong `AppContext` để bật toast **"Bộ nhớ trình duyệt đã đầy"** kèm hướng dẫn xử lý (toast được chặn 30 giây một lần để không dội màn hình). Các thiết lập UI không quan trọng vẫn dùng đường lưu im lặng.
-- **Ảnh giao hàng (POD).** Ảnh được ép về cạnh dài tối đa **1600 px** rồi nén JPEG, hạ dần chất lượng và nếu vẫn quá lớn thì thu nhỏ thêm, cho tới khi dưới **700 kB** — an toàn dưới giới hạn cứng 1.048.576 byte/document của Firestore. Trước đây ảnh lưu ở độ phân giải gốc: một khung 12 MP (3024×4032) cho ra data URL **~9 MB** và Firestore từ chối thẳng, nên ảnh coi như mất.
+- **Ảnh giao hàng (POD).** Ảnh được ép về cạnh dài tối đa **1600 px** rồi nén JPEG, hạ dần chất lượng (0.85 → 0.55) và nếu vẫn quá lớn thì thu nhỏ thêm (nhân 0.75), cho tới khi dưới **700 kB** — an toàn dưới giới hạn cứng 1.048.576 byte/document của Firestore. Trước đây ảnh lưu ở độ phân giải gốc: một khung 12 MP (3024×4032) cho ra data URL **~9 MB** và Firestore từ chối thẳng, nên ảnh coi như mất.
 
-Số liệu trên đến từ phép đo thật trong trình duyệt, không phải ước lượng. Đã thử cả những trường hợp nén tệ nhất — nhiễu ngẫu nhiên, bàn cờ 1 px, nguồn 12 MP và 40 MP — trường hợp xấu nhất là **692 kB**, vẫn dưới ngân sách. Bậc thang kích thước luôn kết thúc bằng một bước ghim cạnh dài về **400 px**, và ở cỡ đó thì dù nội dung thế nào ảnh cũng không thể vượt ngân sách, nên kết quả được bảo đảm bằng cách dựng chứ không chỉ bằng phép đo.
+Số liệu trên đến từ phép đo thật trong trình duyệt, không phải ước lượng. Đã thử cả những trường hợp nén tệ nhất — nhiễu ngẫu nhiên, bàn cờ 1 px, nguồn 12 MP và 40 MP — trường hợp xấu nhất là **692 kB**, vẫn dưới ngân sách. Số đo này dùng byte đã giải mã (`dataUrlByteSize`) thay cho độ dài chuỗi UTF-16, và cạnh dài tối đa 320 px là ngưỡng dừng (floor): nếu bậc thang nén không hội tụ trước khi tới ngưỡng, encoder sẽ **từ chối** (trả về rỗng) thay vì ghi một ảnh không thể lưu được — và người dùng sẽ thấy ảnh không được chụp.
 
 ---
 

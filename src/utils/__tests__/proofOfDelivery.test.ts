@@ -3,7 +3,8 @@ import {
   FIRESTORE_DOC_LIMIT_BYTES,
   POD_ENCODING,
   dataUrlByteSize,
-  podOutputScales,
+  podOutputSize,
+  podShrinkSequence,
 } from '../../components/ProofOfDeliveryCameraModal';
 
 /**
@@ -11,14 +12,14 @@ import {
  * (3024x4032) encoded at JPEG q=0.85 produced a ~9 MB data URL, which Firestore
  * rejects outright because a document may not exceed 1,048,576 bytes.
  *
- * The pixel resizing itself needs a real canvas and so is exercised in the
- * browser; what is pinned here is the plan it follows — which output sizes are
- * tried, in what order, and the guaranteed final size.
+ * The pixel encoding itself needs a real canvas and so is exercised in the
+ * browser; what is pinned here is the arithmetic around it — the byte accounting,
+ * the first-pass size, and the shrink sequence that the encoder relies on to
+ * converge.
  */
 describe('dataUrlByteSize', () => {
   it('matches the hard limit Firestore documents', () => {
     // Firebase documents: "1,048,576 bytes ... the maximum size of a document".
-    expect(FIRESTORE_DOC_LIMIT_BYTES).toBe(1_048_576);
     expect(FIRESTORE_DOC_LIMIT_BYTES).toBe(1024 * 1024);
   });
 
@@ -42,6 +43,12 @@ describe('dataUrlByteSize', () => {
     expect(dataUrlByteSize('data:;base64,AAAA')).toBe(3);
   });
 
+  it('handles a parameterised media type', () => {
+    // `canvas.toDataURL` never emits this, but the helper is exported and a
+    // header regex that stops at the first ";" would over-count by the header.
+    expect(dataUrlByteSize('data:image/jpeg;charset=utf-8;base64,AAAA')).toBe(3);
+  });
+
   it('measures the 9 MB frame that used to break the upload', () => {
     // A base64 string of this length is what a 12 MP high-entropy frame produced,
     // and it must be reported as far beyond the limit.
@@ -56,6 +63,14 @@ describe('dataUrlByteSize', () => {
     const size = dataUrlByteSize(`data:image/jpeg;base64,${fourHundredKilobytesBase64}`);
     expect(size).toBeLessThan(FIRESTORE_DOC_LIMIT_BYTES);
   });
+
+  it('is stricter than the raw string length, which is what the budget must use', () => {
+    // The budget used to be compared against `dataUrl.length`. For pure base64
+    // the two agree, but the decoded size is the number Firestore applies.
+    const url = `data:image/jpeg;base64,${'A'.repeat(4000)}`;
+    expect(dataUrlByteSize(url)).toBe(3000);
+    expect(url.length).toBeGreaterThan(3000);
+  });
 });
 
 describe('POD_ENCODING', () => {
@@ -65,72 +80,136 @@ describe('POD_ENCODING', () => {
     expect(FIRESTORE_DOC_LIMIT_BYTES - POD_ENCODING.maxBytes).toBeGreaterThan(300_000);
   });
 
-  it('tries quality steps in descending order', () => {
+  it('tries quality steps in descending order, all within (0, 1]', () => {
     const steps = [...POD_ENCODING.qualitySteps];
     expect(steps).toEqual([...steps].sort((a, b) => b - a));
-    expect(steps[0]).toBeLessThanOrEqual(1);
-    expect(steps[steps.length - 1]).toBeGreaterThan(0);
-  });
-
-  it('tries fallback scales in descending order, all shrinking', () => {
-    const scales = [...POD_ENCODING.fallbackScales];
-    expect(scales).toEqual([...scales].sort((a, b) => b - a));
-    expect(scales.every((s) => s > 0 && s < 1)).toBe(true);
+    expect(steps.every((s) => s > 0 && s <= 1)).toBe(true);
   });
 
   it('caps the long edge at 1600 px, the size that was measured to fit', () => {
     expect(POD_ENCODING.maxEdge).toBe(1600);
   });
+
+  it('shrinks by a factor strictly between 0 and 1, so each pass makes progress', () => {
+    expect(POD_ENCODING.shrinkFactor).toBeGreaterThan(0);
+    expect(POD_ENCODING.shrinkFactor).toBeLessThan(1);
+  });
 });
 
-describe('podOutputScales', () => {
-  const sizes = (w: number, h: number) =>
-    podOutputScales(w, h).map((s) => `${Math.round(w * s)}x${Math.round(h * s)}`);
-
+describe('podOutputSize', () => {
   it('caps a 12 MP photo at 1600 px on the long edge', () => {
-    expect(sizes(3024, 4032)[0]).toBe('1200x1600');
-    expect(sizes(4032, 3024)[0]).toBe('1600x1200');
+    expect(podOutputSize(3024, 4032)).toEqual({ width: 1200, height: 1600 });
+    expect(podOutputSize(4032, 3024)).toEqual({ width: 1600, height: 1200 });
   });
 
   it('never upscales a source smaller than the cap', () => {
     // A 640x480 frame must not be stretched to 1600 px; that would invent detail
     // and inflate the file for nothing.
-    expect(sizes(640, 480)[0]).toBe('640x480');
+    expect(podOutputSize(640, 480)).toEqual({ width: 640, height: 480 });
   });
 
-  it('tries sizes in descending order, so the first fit wins at the best quality', () => {
-    const raw = podOutputScales(3024, 4032);
-    expect(raw).toEqual([...raw].sort((a, b) => b - a));
+  it('always produces whole, positive dimensions', () => {
+    for (const [w, h] of [
+      [3024, 4032],
+      [10000, 10],
+      [10, 10000],
+      [1, 1],
+      [4032.7, 3023.2],
+    ]) {
+      const size = podOutputSize(w, h);
+      expect(size).not.toBeNull();
+      expect(Number.isInteger(size!.width)).toBe(true);
+      expect(Number.isInteger(size!.height)).toBe(true);
+      expect(size!.width).toBeGreaterThanOrEqual(1);
+      expect(size!.height).toBeGreaterThanOrEqual(1);
+    }
   });
 
-  it('always ends with a size small enough to be bounded regardless of content', () => {
-    // The last resort pins the long edge to hardMinEdge. Its area is what makes
-    // the byte budget provable: an sRGB JPEG cannot exceed ~3 bytes per pixel.
-    const scales = podOutputScales(3024, 4032);
-    const last = scales[scales.length - 1];
-    const pixels = Math.round(3024 * last) * Math.round(4032 * last);
-    expect(Math.round(4032 * last)).toBe(POD_ENCODING.hardMinEdge);
-    expect(pixels * 3).toBeLessThan(POD_ENCODING.maxBytes);
-  });
-
-  it('guarantees a final step even for an absurdly large source', () => {
-    // 40 MP: the fallback list alone would stop well above the cap.
-    const scales = podOutputScales(6000, 7000);
-    const last = scales[scales.length - 1];
-    expect(podOutputScales(6000, 7000)).toEqual([...scales].sort((a, b) => b - a));
-    expect(Math.round(7000 * last)).toBeLessThanOrEqual(POD_ENCODING.hardMinEdge);
-  });
-
-  it('returns no plan for a corrupt image instead of producing NaN dimensions', () => {
+  it('returns null for a corrupt image instead of producing NaN dimensions', () => {
     // A not-yet-decoded or broken image reports NaN/0; drawing that onto a canvas
     // throws, so the encoder must decline rather than guess.
-    expect(podOutputScales(Number.NaN, 400)).toEqual([]);
-    expect(podOutputScales(0, 400)).toEqual([]);
-    expect(podOutputScales(400, Number.POSITIVE_INFINITY)).toEqual([]);
+    expect(podOutputSize(Number.NaN, 400)).toBeNull();
+    expect(podOutputSize(0, 400)).toBeNull();
+    expect(podOutputSize(400, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(podOutputSize(-10, 400)).toBeNull();
+  });
+});
+
+describe('podShrinkSequence', () => {
+  it('starts at the size it is given', () => {
+    expect(podShrinkSequence(1200, 1600)[0]).toEqual({ width: 1200, height: 1600 });
   });
 
-  it('does not duplicate the hard-minimum step when it coincides with a fallback', () => {
-    const scales = podOutputScales(3024, 4032);
-    expect(new Set(scales).size).toBe(scales.length);
+  it('shrinks monotonically until it reaches the floor', () => {
+    const sizes = podShrinkSequence(1200, 1600);
+    for (let i = 1; i < sizes.length; i++) {
+      expect(sizes[i].width).toBeLessThanOrEqual(sizes[i - 1].width);
+      expect(sizes[i].height).toBeLessThanOrEqual(sizes[i - 1].height);
+      // At least one dimension must strictly decrease, or the loop would spin.
+      expect(sizes[i].width < sizes[i - 1].width || sizes[i].height < sizes[i - 1].height).toBe(true);
+    }
+  });
+
+  it('reaches the long-edge floor instead of running out of passes', () => {
+    // This is the important property: the stop condition is a size, not an
+    // arbitrary array length, so the sequence cannot end while still huge.
+    const sizes = podShrinkSequence(1200, 1600);
+    const last = sizes[sizes.length - 1];
+    expect(Math.max(last.width, last.height)).toBeLessThanOrEqual(POD_ENCODING.minEdge);
+    expect(sizes.length).toBeLessThan(POD_ENCODING.maxPasses);
+  });
+
+  it('reaches the floor for every source size the encoder will actually see', () => {
+    // The encoder caps the long edge at 1600 px before the first pass, so any
+    // start it produces has a long edge of at most 1600 — the only absurd starts
+    // here are the pathological aspect ratios the cap still has to survive.
+    const starts: Array<[number, number]> = [
+      [1600, 1200],
+      [1200, 1600],
+      [900, 900],
+      [640, 480],
+      [400, 300],
+      [1, 1],
+    ];
+    for (const [w, h] of starts) {
+      const sizes = podShrinkSequence(w, h);
+      const last = sizes[sizes.length - 1];
+      expect(Math.max(last.width, last.height)).toBeLessThanOrEqual(POD_ENCODING.minEdge);
+      expect(sizes.length).toBeLessThanOrEqual(POD_ENCODING.maxPasses);
+    }
+  });
+
+  it('does not run past the pass cap for a start the floor is reachable from', () => {
+    // With shrink factor 0.75, reaching the 320 px floor from a 1600 px start
+    // takes about 5 passes; the cap of 12 leaves generous headroom for the
+    // quality ladder to do its own work first.
+    const sizes = podShrinkSequence(1600, 1200);
+    expect(sizes.length).toBeLessThanOrEqual(POD_ENCODING.maxPasses);
+    expect(sizes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('terminates within the pass cap for every start size', () => {
+    for (const [w, h] of [
+      [1600, 1200],
+      [1, 1],
+      [10000, 10],
+      [10, 10000],
+      [320, 320],
+    ]) {
+      const sizes = podShrinkSequence(w, h);
+      expect(sizes.length).toBeLessThanOrEqual(POD_ENCODING.maxPasses);
+      expect(Math.max(sizes[sizes.length - 1].width, sizes[sizes.length - 1].height)).toBeLessThanOrEqual(
+        Math.max(POD_ENCODING.minEdge, Math.max(w, h))
+      );
+    }
+  });
+
+  it('never produces a zero dimension, which would make the canvas invalid', () => {
+    // A 10000x10 source shrinks the short edge toward zero; Math.max(1, ...) must
+    // hold it at 1.
+    for (const size of podShrinkSequence(10000, 10)) {
+      expect(size.width).toBeGreaterThanOrEqual(1);
+      expect(size.height).toBeGreaterThanOrEqual(1);
+    }
   });
 });

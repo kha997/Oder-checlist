@@ -9,6 +9,7 @@ Mọi thay đổi đáng kể của dự án được ghi ở đây.
 
 - **Xuất PDF bị hỏng hoàn toàn.** Nút "Tải File PDF" luôn báo lỗi. Nguyên nhân: Tailwind CSS v4 phát bảng màu dưới dạng `oklch()` và ghi gradient kèm gợi ý nội suy `in oklab`, cả hai đều không được html2canvas 1.4.1 hiểu. Nay CSS được chuyển sang sRGB ngay lúc build. Đã xác minh: file PDF 3 trang, 243 kB, đúng cấu trúc `%PDF`.
 - **Ảnh giao hàng (POD) không lưu được lên Firestore.** Ảnh được ghi ở độ phân giải gốc của camera; một khung 12 MP cho ra data URL khoảng 9 MB, vượt giới hạn cứng 1.048.576 byte/document nên Firestore từ chối. Nay ảnh được ép về tối đa 1600 px, hạ dần chất lượng JPEG, và nếu vẫn quá lớn thì thu nhỏ thêm — luôn dưới 700 kB. Áp dụng cho cả đường chụp trực tiếp lẫn đường chọn ảnh từ thư viện.
+- **Bậc thang nén ảnh POD không đảm bảo kết quả dưới ngân sách.** Khi kiểm tra mã, phát hiện chuỗi nén cố định có thể dừng ở một bước chưa đủ nhỏ, và encoder vẫn trả về ảnh quá lớn thay vì từ chối. Nay encoder đi từ bước lớn → nhỏ (nhân 0.75) cho tới khi con số byte vào ngân sách, với ngưỡng dừng cạnh dài tối đa 320 px; nếu vẫn không hội tụ thì trả về rỗng (từ chối ghi) thay vì ghi dữ liệu không thể lưu được. Đo bằng byte đã giải mã (`dataUrlByteSize`), không phải độ dài chuỗi.
 - **`localStorage` đầy thì mất dữ liệu trong im lặng.** `saveToStorage` chỉ ghi log rồi thôi: giao diện vẫn hiển thị thay đổi, nhưng thực tế chưa lưu, và người dùng chỉ phát hiện sau khi tải lại trang. Nay nó ném `StorageQuotaError`, và mọi thao tác lưu dữ liệu người dùng đều đi qua `persist()` để bật toast cảnh báo (chặn 30 giây một lần).
 - `npm install` từ một bản clone sạch trước đây thất bại vì xung đột phiên bản `esbuild`.
 
@@ -33,7 +34,7 @@ Mọi thay đổi đáng kể của dự án được ghi ở đây.
 
 ### Added
 
-- **Unit test** với Vitest: 69 test trên `searchHelper`, `csvExport`, `routeOptimizer`, `vietqr`, `storage` và logic kích thước ảnh POD.
+- **Unit test** với Vitest: 94 test trên `searchHelper`, `csvExport`, `routeOptimizer`, `vietqr`, `storage`, logic kích thước ảnh POD và kế hoạch nén.
 - **Bộ kiểm thử `firestore.rules`** chạy thật với Firestore Emulator: 23 assertion.
 - **CI trên GitHub Actions**: job `verify` (typecheck, test, build) và job `security-rules`.
 - Lệnh `npm run verify` gom toàn bộ cổng kiểm tra.

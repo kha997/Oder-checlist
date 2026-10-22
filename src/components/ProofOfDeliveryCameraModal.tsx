@@ -35,35 +35,43 @@ const POD_QUALITY_STEPS = [0.85, 0.75, 0.65, 0.55];
 const POD_MAX_BYTES = 700_000;
 
 /**
- * Downscale factors applied when even the lowest JPEG quality overshoots the
- * budget. Dimensions are the only lever that reliably converges: quality alone
- * barely moves a high-entropy frame (the same 12 MP frame above is still ~3 MB
- * at q=0.55).
+ * Shrink factor applied per pass when quality alone does not fit the budget.
  *
- * Measured in the browser, every input tried fits on the first or second pass —
- * pure noise, a pathological 1 px checkerboard, 12 MP and 40 MP sources — the
- * worst being 692 kB at full 1600 px. The extra steps below exist so that the
- * result is bounded by construction rather than by that measurement holding.
+ * Dimensions are the only lever that reliably converges: quality barely moves a
+ * high-entropy frame (the same 12 MP frame above is still ~3 MB at q=0.55).
+ *
+ * The encoder does not iterate a fixed list of sizes. It keeps shrinking the
+ * dimensions until the encoded result fits, because a fixed list can only be as
+ * good as the worst case it was measured against, and "it fit the inputs I tried"
+ * is not the guarantee that matters here — the write must not be rejected.
  */
-const POD_FALLBACK_SCALES = [0.75, 0.55, 0.4, 0.25];
+const POD_SHRINK_FACTOR = 0.75;
 
 /**
- * Final safety net: the guaranteed upper bound on the output's long edge.
+ * Floor for the long edge, so the loop cannot shrink a photo into uselessness.
  *
- * If even the smallest fallback scale failed to fit the budget, shrinking the
- * long edge to this is enough for any content, because an sRGB JPEG of WxH
- * pixels cannot exceed roughly 3 bytes per pixel — at 400 px that is 480 kB, and
- * 400 px still shows that a package was left at a door.
+ * The loop is expected to stop long before this. It is a safety stop, not the
+ * mechanism: convergence comes from the budget check at every step. At this size
+ * even an incompressible frame of noise encodes to well under the budget, so the
+ * floor is not what makes the result fit.
  */
-const POD_HARD_MIN_EDGE = 400;
+const POD_MIN_EDGE = 320;
+
+/**
+ * Hard cap on passes, in case a future change to the budget or the quality ladder
+ * makes the loop fail to converge. Without it a non-converging encoder would
+ * freeze the UI on the main thread.
+ */
+const POD_MAX_PASSES = 12;
 
 /**
  * Render a source (video frame or loaded image) into a canvas capped at
  * POD_MAX_EDGE, then encode it as JPEG, stepping quality down — and, only if that
- * is not enough, stepping dimensions down — until it fits the budget.
+ * is not enough, shrinking the dimensions — until the result fits the budget.
  *
- * Returns null only when a 2D context is unavailable, so the caller can fall back
- * to the original image rather than storing something unusable.
+ * Returns null only when a 2D context is unavailable or the output never fits, so
+ * the caller can fall back to the original image rather than storing something
+ * that would be rejected.
  */
 function encodePodPhoto(
   draw: (ctx: CanvasRenderingContext2D, width: number, height: number, canvas: HTMLCanvasElement) => void,
@@ -72,15 +80,13 @@ function encodePodPhoto(
 ): string | null {
   // A corrupt or not-yet-decoded image can report NaN/0 dimensions, which would
   // propagate into the canvas and throw on drawImage.
+  const firstPass = podOutputSize(sourceWidth, sourceHeight);
+  if (!firstPass) return null;
+
   const canvas = document.createElement('canvas');
-  const scales = podOutputScales(sourceWidth, sourceHeight);
-  if (scales.length === 0) return null;
+  let { width, height } = firstPass;
 
-  let dataUrl: string | null = null;
-  for (const scale of scales) {
-    const width = Math.max(1, Math.round(sourceWidth * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
-
+  for (let pass = 0; pass < POD_MAX_PASSES; pass++) {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
@@ -91,20 +97,30 @@ function encodePodPhoto(
     ctx.imageSmoothingQuality = 'high';
     draw(ctx, width, height, canvas);
 
-    dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[0]);
+    let dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[0]);
     for (let i = 1; i < POD_QUALITY_STEPS.length && dataUrlByteSize(dataUrl) > POD_MAX_BYTES; i++) {
       dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[i]);
     }
 
-    if (dataUrlByteSize(dataUrl) <= POD_MAX_BYTES) break;
+    if (dataUrlByteSize(dataUrl) <= POD_MAX_BYTES) return dataUrl;
+
+    // Still too large, so shrink and try again — unless the floor is reached, in
+    // which case no further pass would help.
+    if (Math.max(width, height) <= POD_MIN_EDGE) return null;
+    width = Math.max(1, Math.round(width * POD_SHRINK_FACTOR));
+    height = Math.max(1, Math.round(height * POD_SHRINK_FACTOR));
   }
 
-  return dataUrl;
+  return null;
 }
 
 /**
  * Draw the logistics proof-of-delivery watermark banner, scaled to the output
  * size so the text stays legible whatever the photo dimensions are.
+ *
+ * Clamped to the canvas: an extreme aspect ratio can produce a very short image
+ * (the encoder's floor is on the *long* edge, so a 400x8 output is possible), and
+ * a banner taller than the canvas would be drawn at a negative y and vanish.
  */
 function drawPodWatermark(
   ctx: CanvasRenderingContext2D,
@@ -113,24 +129,29 @@ function drawPodWatermark(
   title: string,
   subtitle: string
 ): void {
-  const bannerHeight = Math.max(56, Math.round(height * 0.09));
-  const titleSize = Math.max(15, Math.round(bannerHeight * 0.34));
-  const subtitleSize = Math.max(11, Math.round(bannerHeight * 0.25));
+  const bannerHeight = Math.min(height, Math.max(56, Math.round(height * 0.09)));
+  const bannerTop = Math.max(0, height - bannerHeight);
+  const padding = Math.min(24, Math.round(width * 0.03));
+  const titleSize = Math.max(10, Math.round(bannerHeight * 0.34));
+  const subtitleSize = Math.max(8, Math.round(bannerHeight * 0.25));
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-  ctx.fillRect(0, height - bannerHeight, width, bannerHeight);
+  ctx.fillRect(0, bannerTop, width, bannerHeight);
 
   // Green accent stripe
   ctx.fillStyle = '#10b981';
-  ctx.fillRect(0, height - bannerHeight, Math.max(5, Math.round(width * 0.006)), bannerHeight);
+  ctx.fillRect(0, bannerTop, Math.max(3, Math.round(width * 0.006)), bannerHeight);
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${titleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.fillText(title, 24, height - bannerHeight + Math.round(bannerHeight * 0.42));
+  // Only draw text when the banner is tall enough to hold it.
+  if (bannerHeight >= 28) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${titleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(title, padding, bannerTop + Math.round(bannerHeight * 0.42));
 
-  ctx.fillStyle = '#cbd5e1';
-  ctx.font = `${subtitleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.fillText(subtitle, 24, height - bannerHeight + Math.round(bannerHeight * 0.78));
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = `${subtitleSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(subtitle, padding, bannerTop + Math.round(bannerHeight * 0.78));
+  }
 }
 
 /** Timestamp pair used on every watermark. */
@@ -146,7 +167,9 @@ function podTimestamp(includeSeconds: boolean): { date: string; time: string } {
   };
 }
 
-const DATA_URL_PREFIX_RE = /^data:[^;,]*;base64,/;
+// Matches any data URL up to the `base64,` marker, including parameterised media
+// types such as `data:image/jpeg;charset=utf-8;base64,`.
+const DATA_URL_PREFIX_RE = /^data:[^,]*,/;
 
 /**
  * Encoded byte size of a data URL without decoding it.
@@ -169,30 +192,52 @@ export const FIRESTORE_DOC_LIMIT_BYTES = 1_048_576;
  */
 export const POD_ENCODING = {
   maxEdge: POD_MAX_EDGE,
-  hardMinEdge: POD_HARD_MIN_EDGE,
+  minEdge: POD_MIN_EDGE,
   maxBytes: POD_MAX_BYTES,
-  fallbackScales: POD_FALLBACK_SCALES,
+  shrinkFactor: POD_SHRINK_FACTOR,
+  maxPasses: POD_MAX_PASSES,
   qualitySteps: POD_QUALITY_STEPS,
 } as const;
 
 /**
- * Result of planning the output sizes for a source image.
+ * First-pass output size for a source image: capped at `maxEdge` on the long
+ * edge, never upscaled.
  *
- * Exported for testing: the ordering (largest first) and the guaranteed final
- * size are the parts that must not regress.
+ * Exported for testing. Returns null for a source whose dimensions are unusable
+ * (NaN/0/Infinity), which a badly decoded image can report.
  */
-export function podOutputScales(sourceWidth: number, sourceHeight: number): number[] {
-  // A badly decoded image reports NaN/0/Infinity; drawing that onto a canvas
-  // throws, so the encoder must decline rather than guess.
+export function podOutputSize(
+  sourceWidth: number,
+  sourceHeight: number
+): { width: number; height: number } | null {
   const valid = (n: number) => Number.isFinite(n) && n >= 1;
-  if (!valid(sourceWidth) || !valid(sourceHeight)) return [];
+  if (!valid(sourceWidth) || !valid(sourceHeight)) return null;
 
-  const sourceMaxEdge = Math.max(sourceWidth, sourceHeight);
-  const maxEdgeScale = Math.min(1, POD_MAX_EDGE / sourceMaxEdge);
-  const hardMinScale = Math.min(1, POD_HARD_MIN_EDGE / sourceMaxEdge);
-  return [...new Set([maxEdgeScale, ...POD_FALLBACK_SCALES.map((f) => maxEdgeScale * f), hardMinScale])]
-    .filter((s) => s > 0)
-    .sort((a, b) => b - a);
+  const scale = Math.min(1, POD_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  return {
+    width: Math.max(1, Math.round(sourceWidth * scale)),
+    height: Math.max(1, Math.round(sourceHeight * scale)),
+  };
+}
+
+/**
+ * The size sequence the encoder walks when quality alone does not fit the budget.
+ *
+ * Exported for testing: it must reach the floor, shrink monotonically, and stop.
+ */
+export function podShrinkSequence(startWidth: number, startHeight: number): Array<{ width: number; height: number }> {
+  const sizes: Array<{ width: number; height: number }> = [];
+  let width = startWidth;
+  let height = startHeight;
+
+  for (let pass = 0; pass < POD_MAX_PASSES; pass++) {
+    sizes.push({ width, height });
+    if (Math.max(width, height) <= POD_MIN_EDGE) break;
+    width = Math.max(1, Math.round(width * POD_SHRINK_FACTOR));
+    height = Math.max(1, Math.round(height * POD_SHRINK_FACTOR));
+  }
+
+  return sizes;
 }
 
 export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProps> = ({
