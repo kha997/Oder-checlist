@@ -542,8 +542,12 @@ export const STORAGE_WARNING_INTERVAL_MS = 30_000;
  * whether the user is told about a lost write is the whole point of this feature,
  * and it is otherwise only reachable through a rendered React tree.
  *
- * @param onFailure invoked at most once per `intervalMs` with the first failure
- *                  in each window.
+ * A `QuotaExceededError` is reported regardless of the throttle, because that is
+ * the failure the user has to act on and it is reached through the same window
+ * as any other slice: the effects run in declaration order, so a redundant write
+ * of a low-value slice can fail first and would otherwise swallow the warning.
+ *
+ * @param onFailure invoked with the first failure in each window.
  */
 export function createStorageFailureReporter(
   onFailure: (failure: StorageQuotaError) => void,
@@ -551,11 +555,23 @@ export function createStorageFailureReporter(
   now: () => number = Date.now
 ): (failure: StorageQuotaError) => void {
   let lastReportedAt = Number.NEGATIVE_INFINITY;
+  // A quota failure is urgent enough to be reported even inside a window that
+  // another failure opened; this keeps that to one extra message per window.
+  let quotaReportedInWindow = false;
 
   return (failure: StorageQuotaError) => {
     const current = now();
-    if (current - lastReportedAt < intervalMs) return;
+    const inWindow = current - lastReportedAt < intervalMs;
+
+    if (inWindow) {
+      if (!failure.quotaExceeded || quotaReportedInWindow) return;
+      quotaReportedInWindow = true;
+      onFailure(failure);
+      return;
+    }
+
     lastReportedAt = current;
+    quotaReportedInWindow = failure.quotaExceeded;
     onFailure(failure);
   };
 }

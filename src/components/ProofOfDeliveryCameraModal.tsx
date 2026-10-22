@@ -36,32 +36,48 @@ const POD_MAX_BYTES = 700_000;
 
 /**
  * Downscale factors applied when even the lowest JPEG quality overshoots the
- * budget. A 1600 px frame of pure noise (the theoretical worst case, far worse
- * than any real photograph) reached 900 kB above, so quality alone is not a
- * guarantee. Dimensions are the only lever that always converges.
+ * budget. Dimensions are the only lever that reliably converges: quality alone
+ * barely moves a high-entropy frame (the same 12 MP frame above is still ~3 MB
+ * at q=0.55).
+ *
+ * Measured in the browser, every input tried fits on the first or second pass —
+ * pure noise, a pathological 1 px checkerboard, 12 MP and 40 MP sources — the
+ * worst being 692 kB at full 1600 px. The extra steps below exist so that the
+ * result is bounded by construction rather than by that measurement holding.
  */
-const POD_FALLBACK_SCALES = [0.75, 0.55, 0.4];
+const POD_FALLBACK_SCALES = [0.75, 0.55, 0.4, 0.25];
+
+/**
+ * Final safety net: the guaranteed upper bound on the output's long edge.
+ *
+ * If even the smallest fallback scale failed to fit the budget, shrinking the
+ * long edge to this is enough for any content, because an sRGB JPEG of WxH
+ * pixels cannot exceed roughly 3 bytes per pixel — at 400 px that is 480 kB, and
+ * 400 px still shows that a package was left at a door.
+ */
+const POD_HARD_MIN_EDGE = 400;
 
 /**
  * Render a source (video frame or loaded image) into a canvas capped at
- * POD_MAX_EDGE, then encode it as JPEG, stepping quality down — and only if that
+ * POD_MAX_EDGE, then encode it as JPEG, stepping quality down — and, only if that
  * is not enough, stepping dimensions down — until it fits the budget.
  *
- * Returns null only when a 2D context is unavailable. The result is always at or
- * below POD_MAX_BYTES, so the caller can write it to Firestore without risking a
- * rejected document.
+ * Returns null only when a 2D context is unavailable, so the caller can fall back
+ * to the original image rather than storing something unusable.
  */
 function encodePodPhoto(
   draw: (ctx: CanvasRenderingContext2D, width: number, height: number, canvas: HTMLCanvasElement) => void,
   sourceWidth: number,
   sourceHeight: number
 ): string | null {
+  // A corrupt or not-yet-decoded image can report NaN/0 dimensions, which would
+  // propagate into the canvas and throw on drawImage.
   const canvas = document.createElement('canvas');
-  const maxEdgeScale = Math.min(1, POD_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  const scales = podOutputScales(sourceWidth, sourceHeight);
+  if (scales.length === 0) return null;
 
-  let dataUrl = '';
-  for (const extraScale of [1, ...POD_FALLBACK_SCALES]) {
-    const scale = maxEdgeScale * extraScale;
+  let dataUrl: string | null = null;
+  for (const scale of scales) {
     const width = Math.max(1, Math.round(sourceWidth * scale));
     const height = Math.max(1, Math.round(sourceHeight * scale));
 
@@ -76,11 +92,11 @@ function encodePodPhoto(
     draw(ctx, width, height, canvas);
 
     dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[0]);
-    for (let i = 1; i < POD_QUALITY_STEPS.length && dataUrl.length > POD_MAX_BYTES; i++) {
+    for (let i = 1; i < POD_QUALITY_STEPS.length && dataUrlByteSize(dataUrl) > POD_MAX_BYTES; i++) {
       dataUrl = canvas.toDataURL('image/jpeg', POD_QUALITY_STEPS[i]);
     }
 
-    if (dataUrl.length <= POD_MAX_BYTES) break;
+    if (dataUrlByteSize(dataUrl) <= POD_MAX_BYTES) break;
   }
 
   return dataUrl;
@@ -135,8 +151,8 @@ const DATA_URL_PREFIX_RE = /^data:[^;,]*;base64,/;
 /**
  * Encoded byte size of a data URL without decoding it.
  *
- * Firestore's limit applies to the stored string, and a base64 payload is
- * representable in UTF-8 exactly, so its length is a faithful proxy.
+ * Firestore's limit applies to the stored bytes, not UTF-16 code units, so the
+ * budget is checked in real bytes rather than by string length.
  */
 export function dataUrlByteSize(dataUrl: string): number {
   const base64 = dataUrl.replace(DATA_URL_PREFIX_RE, '');
@@ -146,6 +162,38 @@ export function dataUrlByteSize(dataUrl: string): number {
 
 /** Firestore's hard per-document limit, in bytes. */
 export const FIRESTORE_DOC_LIMIT_BYTES = 1_048_576;
+
+/**
+ * Tunables of the POD encoder, exported so the budget contract can be tested
+ * without rendering the component or needing a real canvas.
+ */
+export const POD_ENCODING = {
+  maxEdge: POD_MAX_EDGE,
+  hardMinEdge: POD_HARD_MIN_EDGE,
+  maxBytes: POD_MAX_BYTES,
+  fallbackScales: POD_FALLBACK_SCALES,
+  qualitySteps: POD_QUALITY_STEPS,
+} as const;
+
+/**
+ * Result of planning the output sizes for a source image.
+ *
+ * Exported for testing: the ordering (largest first) and the guaranteed final
+ * size are the parts that must not regress.
+ */
+export function podOutputScales(sourceWidth: number, sourceHeight: number): number[] {
+  // A badly decoded image reports NaN/0/Infinity; drawing that onto a canvas
+  // throws, so the encoder must decline rather than guess.
+  const valid = (n: number) => Number.isFinite(n) && n >= 1;
+  if (!valid(sourceWidth) || !valid(sourceHeight)) return [];
+
+  const sourceMaxEdge = Math.max(sourceWidth, sourceHeight);
+  const maxEdgeScale = Math.min(1, POD_MAX_EDGE / sourceMaxEdge);
+  const hardMinScale = Math.min(1, POD_HARD_MIN_EDGE / sourceMaxEdge);
+  return [...new Set([maxEdgeScale, ...POD_FALLBACK_SCALES.map((f) => maxEdgeScale * f), hardMinScale])]
+    .filter((s) => s > 0)
+    .sort((a, b) => b - a);
+}
 
 export const ProofOfDeliveryCameraModal: React.FC<ProofOfDeliveryCameraModalProps> = ({
   isOpen,

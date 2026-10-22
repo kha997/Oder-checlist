@@ -158,6 +158,25 @@ describe('createStorageFailureReporter', () => {
     expect(seen[0].key).toBe('oder_checklist_orders_v1');
     expect(seen[0].quotaExceeded).toBe(false);
   });
+
+  it('still reports a quota failure inside a window opened by a lesser failure', () => {
+    // Effects run in declaration order, so a redundant write of a low-value
+    // slice can fail first. The urgent failure must not be swallowed by it.
+    const seen: StorageQuotaError[] = [];
+    const report = createStorageFailureReporter((f) => seen.push(f), 30_000, () => 0);
+    report(failure('sound', false));
+    report(failure('orders', true));
+    expect(seen.map((f) => f.key)).toEqual(['sound', 'orders']);
+  });
+
+  it('reports the urgent failure only once per window', () => {
+    const seen: StorageQuotaError[] = [];
+    const report = createStorageFailureReporter((f) => seen.push(f), 30_000, () => 0);
+    report(failure('orders', true));
+    report(failure('customers', true));
+    report(failure('products', true));
+    expect(seen).toHaveLength(1);
+  });
 });
 
 describe('storageFailureMessage', () => {
