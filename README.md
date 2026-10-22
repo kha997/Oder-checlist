@@ -131,14 +131,8 @@ Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng
 - **Chưa có liên kết giữa `users` và `auth.uid`.** Rules không biết tài khoản Google nào ứng với nhân viên nào, nên không thể phân quyền theo vai trò ở tầng dữ liệu. Đây là việc cần làm trước khi dùng nhiều người thật.
 - **Email admin hardcode trong `firestore.rules`.** Hiện chỉ có một email được quyền xóa đơn ở tầng dữ liệu.
 
-### Chức năng dở dang
-
-- **`ExportOrderReportModal` nhận prop `title` nhưng bỏ qua.** Tiêu đề trong bản in lấy từ `docType`, còn `ReportScreen` vẫn giữ state `exportModalTitle` không bao giờ hiển thị. Nút xuất HTML đã bị gỡ, nên `downloadHtmlReport()` còn lại nhưng không ai gọi.
-- **`RouteMapView` tính `dueStatus` rồi không dùng.** Trông như một tính năng xếp lịch còn làm dở.
-
 ### Toàn vẹn dữ liệu
 
-- **`bun.lock` đã lệch khỏi `package-lock.json`.** Không còn dùng bun; file lock cũ vẫn nằm trong repo và có thể gây nhầm lẫn.
 - **Ảnh POD chỉ còn một bản sao trong `localStorage`.** Ảnh đã được ép về tối đa 1600 px và dưới 700 kB, nhưng nhiều đơn kèm ảnh vẫn có thể làm đầy `localStorage` (~5 MB trên Safari di động). Khi đó app báo toast "Bộ nhớ trình duyệt đã đầy" thay vì im lặng — nhưng chưa có nút xoá ảnh cũ hàng loạt.
 
 ### Dây chuyền code

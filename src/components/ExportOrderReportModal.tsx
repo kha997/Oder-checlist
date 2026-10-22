@@ -21,9 +21,7 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
   isOpen,
   onClose,
   orders,
-  // NOTE: the optional `title` prop is declared above but not consumed — the
-  // printable heading is derived from `docType` instead. Kept in the props
-  // type because 4 call sites pass it; see README "Known gaps".
+  title,
   periodLabel = 'Hôm nay',
   defaultDocType = 'ACCOUNTING_REPORT',
   currentUser = 'Quản lý',
@@ -37,6 +35,18 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
 
   const printAreaRef = useRef<HTMLDivElement>(null);
+
+  // Printable heading: an explicit `title` wins; otherwise derive it from the
+  // selected document type. (Previously `title` was accepted but ignored, so
+  // callers passing a custom heading — e.g. a delivery manifest — silently got
+  // the accounting heading instead.)
+  const docTypeHeading =
+    title ??
+    (docType === 'ACCOUNTING_REPORT'
+      ? 'BẢNG KÊ DOANH THU & ĐỐI SOÁT TÀI CHÍNH KẾ TOÁN'
+      : docType === 'DELIVERY_MANIFEST'
+        ? 'PHIẾU GIAO HÀNG & BẢNG KÊ LỘ TRÌNH VẬN CHUYỂN'
+        : 'BẢNG TỔNG HỢP DANH SÁCH ĐƠN HÀNG');
 
   if (!isOpen) return null;
 
@@ -242,9 +252,7 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
               <div className="flex justify-between items-start gap-4">
                 <div>
                   <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 uppercase">
-                    {docType === 'ACCOUNTING_REPORT' && 'BẢNG KÊ DOANH THU & ĐỐI SOÁT TÀI CHÍNH KẾ TOÁN'}
-                    {docType === 'DELIVERY_MANIFEST' && 'PHIẾU GIAO HÀNG & BẢNG KÊ LỘ TRÌNH VẬN CHUYỂN'}
-                    {docType === 'ORDER_SUMMARY' && 'BẢNG TỔNG HỢP DANH SÁCH ĐƠN HÀNG'}
+                    {docTypeHeading}
                   </h1>
                   <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
                     Hệ thống quản lý Oder Checklist • Giao hàng chung cư & Khách ngoài
