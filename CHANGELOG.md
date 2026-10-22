@@ -8,7 +8,14 @@ Mọi thay đổi đáng kể của dự án được ghi ở đây.
 ### Fixed
 
 - **Xuất PDF bị hỏng hoàn toàn.** Nút "Tải File PDF" luôn báo lỗi. Nguyên nhân: Tailwind CSS v4 phát bảng màu dưới dạng `oklch()` và ghi gradient kèm gợi ý nội suy `in oklab`, cả hai đều không được html2canvas 1.4.1 hiểu. Nay CSS được chuyển sang sRGB ngay lúc build. Đã xác minh: file PDF 3 trang, 243 kB, đúng cấu trúc `%PDF`.
+- **Ảnh giao hàng (POD) không lưu được lên Firestore.** Ảnh được ghi ở độ phân giải gốc của camera; một khung 12 MP cho ra data URL khoảng 9 MB, vượt giới hạn cứng 1.048.576 byte/document nên Firestore từ chối. Nay ảnh được ép về tối đa 1600 px, hạ dần chất lượng JPEG, và nếu vẫn quá lớn thì thu nhỏ thêm — luôn dưới 700 kB. Áp dụng cho cả đường chụp trực tiếp lẫn đường chọn ảnh từ thư viện.
+- **`localStorage` đầy thì mất dữ liệu trong im lặng.** `saveToStorage` chỉ ghi log rồi thôi: giao diện vẫn hiển thị thay đổi, nhưng thực tế chưa lưu, và người dùng chỉ phát hiện sau khi tải lại trang. Nay nó ném `StorageQuotaError`, và mọi thao tác lưu dữ liệu người dùng đều đi qua `persist()` để bật toast cảnh báo (chặn 30 giây một lần).
 - `npm install` từ một bản clone sạch trước đây thất bại vì xung đột phiên bản `esbuild`.
+
+### Removed
+
+- `StaffUser.pin` — lưu mật khẩu dạng chữ thường trong Firestore; `firestore.rules` nay từ chối mọi document chứa trường `pin`.
+- Canvas ẩn trong `ProofOfDeliveryCameraModal`: việc ghép watermark nay dùng canvas tạm đúng kích thước đầu ra.
 
 ### Security
 
@@ -26,7 +33,7 @@ Mọi thay đổi đáng kể của dự án được ghi ở đây.
 
 ### Added
 
-- **Unit test** với Vitest: 51 test trên `searchHelper`, `csvExport`, `routeOptimizer`, `vietqr`.
+- **Unit test** với Vitest: 69 test trên `searchHelper`, `csvExport`, `routeOptimizer`, `vietqr`, `storage` và logic kích thước ảnh POD.
 - **Bộ kiểm thử `firestore.rules`** chạy thật với Firestore Emulator: 23 assertion.
 - **CI trên GitHub Actions**: job `verify` (typecheck, test, build) và job `security-rules`.
 - Lệnh `npm run verify` gom toàn bộ cổng kiểm tra.

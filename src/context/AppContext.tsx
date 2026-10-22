@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { type Product, type Customer, type CondoLocation, type Order, type StockLog, type ScreenType, type PaymentMethod, type OrderItem, type OrderLocation, type OrderPriority, type DeliveryStatus, type RecurringFrequency, calculateNextRecurringDate, type AppNotification, type NotificationType, type NotificationSchedulerConfig, DEFAULT_SCHEDULER_CONFIG, getOrderCost, type UserRole, type RoleConfig, ROLE_CONFIGS, type StaffUser, type StoreBankConfig, DEFAULT_BANK_CONFIG, type CustomerDebtSummary } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -10,7 +10,10 @@ import {
   OPERATOR_USERS,
   STORAGE_KEYS,
   loadFromStorage,
-  saveToStorage,
+  trySaveToStorage,
+  createStorageFailureReporter,
+  storageFailureMessage,
+  type StorageQuotaError,
   formatVND,
 } from '../utils/storage';
 import { playNotificationSound } from '../utils/soundNotification';
@@ -181,7 +184,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Synchronize bankConfig to local storage
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.BANK_CONFIG, bankConfig);
+    persist(STORAGE_KEYS.BANK_CONFIG, bankConfig);
   }, [bankConfig]);
 
   const updateBankConfig = (updates: Partial<StoreBankConfig>) => {
@@ -198,11 +201,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Synchronize staff to local storage
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.STAFF_USERS, staffUsers);
+    persist(STORAGE_KEYS.STAFF_USERS, staffUsers);
   }, [staffUsers]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.ACTIVE_STAFF_ID, activeStaffId);
+    persist(STORAGE_KEYS.ACTIVE_STAFF_ID, activeStaffId);
   }, [activeStaffId]);
 
   const activeStaff: StaffUser = useMemo(() => {
@@ -222,7 +225,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setActiveStaffIdState(staffId);
     const found = staffUsers.find((s) => s.id === staffId);
     if (found) {
-      saveToStorage(STORAGE_KEYS.CURRENT_USER, found.name);
+      persist(STORAGE_KEYS.CURRENT_USER, found.name);
     }
   };
 
@@ -302,14 +305,73 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     NotificationPermission | 'unsupported'
   >(() => getBrowserNotificationPermission());
 
+  /**
+   * Ref to the latest `pushAlertNotification`.
+   *
+   * `persist` is memoized with an empty dependency list so that it stays stable
+   * across renders — otherwise it would be recreated on every render and change
+   * the identity of every store subscription that depends on it. The ref keeps
+   * the callback it calls current without that churn.
+   */
+  const pushAlertNotificationRef = useRef<(params: {
+    type: NotificationType;
+    title: string;
+    message: string;
+    orderId?: string;
+    priority?: OrderPriority;
+  }) => void>(() => {});
+
+  /**
+   * Persist a slice of state, surfacing a storage failure to the user.
+   *
+   * Every write of user data goes through here so that a full localStorage cannot
+   * silently drop an order. The warning is throttled because one full-storage
+   * write typically fails several effects in the same commit, and a stack of
+   * identical toasts is worse than one.
+   *
+   * Must never throw: an exception from an effect aborts the sibling effects in
+   * the same commit, which would stop the other slices from being saved at all.
+   */
+  const reportStorageFailure = useMemo(
+    () =>
+      createStorageFailureReporter((failure) => {
+        pushAlertNotificationRef.current({
+          type: 'STORAGE_FULL',
+          title: '⚠️ Bộ nhớ trình duyệt đã đầy',
+          message: storageFailureMessage(failure),
+        });
+      }),
+    []
+  );
+
+  const persist = useCallback(
+    (key: string, value: unknown) => {
+      const failure: StorageQuotaError | null = trySaveToStorage(key, value);
+      if (!failure) return;
+      reportStorageFailure(failure);
+    },
+    [reportStorageFailure]
+  );
+
   // Synchronize notifications
+  //
+  // A plain best-effort write, deliberately NOT `persist`. `persist` warns by
+  // calling `pushAlertNotification`, which appends to `notifications` — so
+  // routing this effect through it would re-enter this effect on every failed
+  // write. Notification history is also the least important slice to save, and a
+  // full storage is already reported by the user-data write that caused it.
+  // It must never throw: an exception from an effect aborts the sibling effects
+  // in the same commit, which would block `persist` from warning at all.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.NOTIFICATIONS, notifications);
+    trySaveToStorage(STORAGE_KEYS.NOTIFICATIONS, notifications);
   }, [notifications]);
 
   // Synchronize soundEnabled
+  //
+  // A UI preference, so a full storage should not raise a toast — but it must
+  // still not throw either, or it would abort the effects that save real data.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.SOUND_ENABLED, soundEnabled);
+    trySaveToStorage(STORAGE_KEYS.SOUND_ENABLED, soundEnabled);
   }, [soundEnabled]);
 
   // Auto-dismiss active floating toast notification after 5 seconds
@@ -357,8 +419,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     loadFromStorage<NotificationSchedulerConfig>(STORAGE_KEYS.SCHEDULER_CONFIG, DEFAULT_SCHEDULER_CONFIG)
   );
 
+  // Same reasoning as soundEnabled: a preference, so warn/ignore rather than
+  // throwing out of the effect.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.SCHEDULER_CONFIG, schedulerConfig);
+    trySaveToStorage(STORAGE_KEYS.SCHEDULER_CONFIG, schedulerConfig);
   }, [schedulerConfig]);
 
   const updateSchedulerConfig = (updates: Partial<NotificationSchedulerConfig>) => {
@@ -412,29 +476,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Keep the ref pointing at the current closure on every render.
+  pushAlertNotificationRef.current = pushAlertNotification;
+
   // Synchronize currentUser
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.CURRENT_USER, currentUser);
+    persist(STORAGE_KEYS.CURRENT_USER, currentUser);
   }, [currentUser]);
 
   // Synchronize condos
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.CONDOS, condos);
+    persist(STORAGE_KEYS.CONDOS, condos);
   }, [condos]);
 
   // Synchronize customers
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.CUSTOMERS, customers);
+    persist(STORAGE_KEYS.CUSTOMERS, customers);
   }, [customers]);
 
   // Synchronize orders
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+    persist(STORAGE_KEYS.ORDERS, orders);
   }, [orders]);
 
   // Synchronize stockLogs
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.STOCK_LOGS, stockLogs);
+    persist(STORAGE_KEYS.STOCK_LOGS, stockLogs);
   }, [stockLogs]);
 
   // Firebase Auth and Cloud Sync State
@@ -678,7 +745,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     });
 
-    saveToStorage(STORAGE_KEYS.PRODUCTS, calculated);
+    persist(STORAGE_KEYS.PRODUCTS, calculated);
     return calculated;
   }, [rawProducts, orders]);
 

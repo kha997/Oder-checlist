@@ -25,6 +25,7 @@ export type NotificationType =
   | 'OUT_FOR_DELIVERY_DUE'
   | 'SCHEDULED_DELIVERY_REMINDER'
   | 'RECURRING_ORDER_GENERATED'
+  | 'STORAGE_FULL'
   | 'SYSTEM';
 
 export interface AppNotification {

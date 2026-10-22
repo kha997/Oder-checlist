@@ -71,7 +71,7 @@ npm run verify      # chạy toàn bộ cổng kiểm tra bên dưới, theo th�
 | Lệnh | Nội dung |
 | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` với `strict` + `noUnusedLocals` / `noUnusedParameters` |
-| `npm test` | 51 unit test trên logic thuần (tìm kiếm, CSV, lộ trình, VietQR) |
+| `npm test` | 69 unit test trên logic thuần (tìm kiếm, CSV, lộ trình, VietQR, lưu trữ, kích thước ảnh POD) |
 | `npm run test:rules` | 23 assertion trên `firestore.rules`, chạy thật với Firestore Emulator |
 | `npm run test:palette` | Kiểm tra CSS đã build không còn `oklch()` / `in oklab` và đối chiếu bảng màu với Tailwind |
 | `npm run build` | Build production, cảnh báo nếu chunk vượt 700 kB |
@@ -138,14 +138,24 @@ Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng
 
 ### Toàn vẹn dữ liệu
 
-- **`saveToStorage` nuốt lỗi `QuotaExceededError`.** `localStorage` đầy thì thao tác lưu thất bại trong im lặng — người dùng tưởng đã lưu nhưng dữ liệu đã mất.
-- **Ảnh POD có thể vượt giới hạn 1 MB / document của Firestore.** Ảnh được chụp ở độ phân giải gốc của camera rồi nén JPEG, không giới hạn kích thước trước khi ghi.
 - **`bun.lock` đã lệch khỏi `package-lock.json`.** Không còn dùng bun; file lock cũ vẫn nằm trong repo và có thể gây nhầm lẫn.
+- **Ảnh POD chỉ còn một bản sao trong `localStorage`.** Ảnh đã được ép về tối đa 1600 px và dưới 700 kB, nhưng nhiều đơn kèm ảnh vẫn có thể làm đầy `localStorage` (~5 MB trên Safari di động). Khi đó app báo toast "Bộ nhớ trình duyệt đã đầy" thay vì im lặng — nhưng chưa có nút xoá ảnh cũ hàng loạt.
 
 ### Dây chuyền code
 
 - **Chưa có ESLint.** Bị chặn bởi xung đột phiên bản TypeScript ở trên.
 - **`firebase-applet-config.json` được commit kèm `projectId`, `apiKey`, `oAuthClientId`.** Với Firebase, những giá trị này được thiết kế để công khai — bảo mật phải đến từ `firestore.rules` và Authorized Domains. Nhưng nếu bạn tự triển khai, hãy đổi sang project của mình và giới hạn Authorized Domains.
+
+---
+
+## 🛡 Độ bền dữ liệu
+
+Hai chỗ dưới đây trước kia thất bại trong im lặng. Nay chúng báo lỗi rõ ràng:
+
+- **`localStorage` đầy.** `saveToStorage` ném `StorageQuotaError` thay vì chỉ ghi log. Mọi thao tác lưu dữ liệu người dùng đi qua một hàm `persist()` trong `AppContext` để bật toast **"Bộ nhớ trình duyệt đã đầy"** kèm hướng dẫn xử lý (toast được chặn 30 giây một lần để không dội màn hình). Các thiết lập UI không quan trọng vẫn dùng đường lưu im lặng.
+- **Ảnh giao hàng (POD).** Ảnh được ép về cạnh dài tối đa **1600 px** rồi nén JPEG, hạ dần chất lượng và nếu vẫn quá lớn thì thu nhỏ thêm, cho tới khi dưới **700 kB** — an toàn dưới giới hạn cứng 1.048.576 byte/document của Firestore. Trước đây ảnh lưu ở độ phân giải gốc: một khung 12 MP (3024×4032) cho ra data URL **~9 MB** và Firestore từ chối thẳng, nên ảnh coi như mất.
+
+Số liệu trên đến từ phép đo thật trong trình duyệt, không phải ước lượng. Trường hợp xấu nhất về mặt lý thuyết — 1600 px toàn nhiễu ngẫu nhiên, nén kém hơn mọi ảnh chụp thật — vẫn hội tụ xuống 583 kB.
 
 ---
 
