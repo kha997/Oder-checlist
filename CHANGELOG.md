@@ -11,12 +11,14 @@ Mọi thay đổi đáng kể của dự án được ghi ở đây.
 - **Ảnh giao hàng (POD) không lưu được lên Firestore.** Ảnh được ghi ở độ phân giải gốc của camera; một khung 12 MP cho ra data URL khoảng 9 MB, vượt giới hạn cứng 1.048.576 byte/document nên Firestore từ chối. Nay ảnh được ép về tối đa 1600 px, hạ dần chất lượng JPEG, và nếu vẫn quá lớn thì thu nhỏ thêm — luôn dưới 700 kB. Áp dụng cho cả đường chụp trực tiếp lẫn đường chọn ảnh từ thư viện.
 - **Bậc thang nén ảnh POD không đảm bảo kết quả dưới ngân sách.** Khi kiểm tra mã, phát hiện chuỗi nén cố định có thể dừng ở một bước chưa đủ nhỏ, và encoder vẫn trả về ảnh quá lớn thay vì từ chối. Nay encoder đi từ bước lớn → nhỏ (nhân 0.75) cho tới khi con số byte vào ngân sách, với ngưỡng dừng cạnh dài tối đa 320 px; nếu vẫn không hội tụ thì trả về rỗng (từ chối ghi) thay vì ghi dữ liệu không thể lưu được. Đo bằng byte đã giải mã (`dataUrlByteSize`), không phải độ dài chuỗi.
 - **`localStorage` đầy thì mất dữ liệu trong im lặng.** `saveToStorage` chỉ ghi log rồi thôi: giao diện vẫn hiển thị thay đổi, nhưng thực tế chưa lưu, và người dùng chỉ phát hiện sau khi tải lại trang. Nay nó ném `StorageQuotaError`, và mọi thao tác lưu dữ liệu người dùng đều đi qua `persist()` để bật toast cảnh báo (chặn 30 giây một lần).
+- **`ExportOrderReportModal` bỏ qua prop `title`.** Tiêu đề in/PDF luôn lấy từ `docType`, nên các call site truyền `title` (ví dụ heading tùy chỉ định cho phiếu giao hàng) bị lệch. Nay prop `title` được dùng khi có giá trị, ngược lại fallback sang heading derive từ `docType`.
 - `npm install` từ một bản clone sạch trước đây thất bại vì xung đột phiên bản `esbuild`.
 
 ### Removed
 
 - `StaffUser.pin` — lưu mật khẩu dạng chữ thường trong Firestore; `firestore.rules` nay từ chối mọi document chứa trường `pin`.
 - Canvas ẩn trong `ProofOfDeliveryCameraModal`: việc ghép watermark nay dùng canvas tạm đúng kích thước đầu ra.
+- File lock `bun.lock` — dự án không còn dùng bun; chỉ giữ `package-lock.json`.
 
 ### Security
 
