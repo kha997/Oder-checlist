@@ -1,32 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { type Order, type DeliveryStatus } from '../types';
+import { type Order } from '../types';
 import { DeliveryReceiptScannerModal } from './DeliveryReceiptScannerModal';
 import { QuickCreateOrderModal } from './QuickCreateOrderModal';
 import { OrderDetailModal } from './OrderDetailModal';
-import {
-  Zap,
-  X,
-  Camera,
-  PlusCircle,
-  Truck,
-  CheckCircle2,
-  Clock,
-  MapPin,
-  Phone,
-  Search,
-  Building2,
-  Sparkles,
-  Check,
-  CheckCheck,
-  AlertCircle,
-  RotateCcw,
-  Plus,
-  Coins,
-  ArrowRight,
-  Filter,
-} from 'lucide-react';
+import { Zap, X, Camera, Truck, CheckCircle2, Clock, MapPin, Phone, Search, Building2, Check, CheckCheck, RotateCcw, Coins, ArrowRight } from 'lucide-react';
 
 export const QuickActionsFloatingMenu: React.FC = () => {
   const {

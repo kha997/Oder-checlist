@@ -7,27 +7,7 @@ import {
 } from '../utils/searchHelper';
 import { formatVND } from '../utils/storage';
 import { type Order } from '../types';
-import {
-  Search,
-  X,
-  Building2,
-  MapPin,
-  CheckCircle2,
-  Clock,
-  Rocket,
-  ArrowRight,
-  Phone,
-  Copy,
-  Check,
-  Eye,
-  SlidersHorizontal,
-  Sparkles,
-  Command,
-  Truck,
-  RotateCcw,
-  Mic,
-  MicOff,
-} from 'lucide-react';
+import { Search, X, Building2, MapPin, CheckCircle2, Clock, Rocket, ArrowRight, Phone, Copy, Check, Eye, Sparkles, Mic, MicOff } from 'lucide-react';
 import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,

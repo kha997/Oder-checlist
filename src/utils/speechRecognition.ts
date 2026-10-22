@@ -395,7 +395,6 @@ export function parseVoiceOrder(
   condos: CondoLocation[]
 ): ParsedVoiceOrder {
   const rawTranscript = transcript.trim();
-  const lowerTranscript = rawTranscript.toLowerCase();
   const cleanTranscript = removeVietnameseTones(rawTranscript);
 
   const matchedItems: ParsedVoiceOrder['matchedItems'] = [];

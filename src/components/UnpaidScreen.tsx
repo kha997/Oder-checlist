@@ -9,33 +9,7 @@ import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
 import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';
 import { CustomerDebtReminderModal } from './CustomerDebtReminderModal';
 import { getZaloChatUrl, cleanPhoneNumber } from '../utils/vietqr';
-import {
-  ArrowLeft,
-  Wallet,
-  Building2,
-  Phone,
-  MessageCircle,
-  QrCode,
-  Banknote,
-  Landmark,
-  CheckCircle2,
-  Clock,
-  UserCheck,
-  Search,
-  Sparkles,
-  X,
-  Filter,
-  FileText,
-  Lock,
-  AlertTriangle,
-  Receipt,
-  Users,
-  ChevronDown,
-  ChevronUp,
-  Crown,
-  ExternalLink,
-  BellRing,
-} from 'lucide-react';
+import { ArrowLeft, Wallet, Building2, Phone, MessageCircle, QrCode, Banknote, Landmark, CheckCircle2, Clock, UserCheck, Search, Sparkles, X, Filter, FileText, Lock, AlertTriangle, Receipt, ChevronDown, ChevronUp, Crown, BellRing } from 'lucide-react';
 
 export const UnpaidScreen: React.FC = () => {
   const {

@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext';
 import { type Customer, type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import {
-  cleanPhoneNumber,
   getZaloChatUrl,
   getTelUrl,
   getSmsUrl,
@@ -11,25 +10,7 @@ import {
   type OverdueReminderTemplate,
   generateCustomerDebtVietQrUrl,
 } from '../utils/vietqr';
-import {
-  BellRing,
-  MessageCircle,
-  Smartphone,
-  Copy,
-  Check,
-  CheckCircle2,
-  X,
-  Phone,
-  AlertTriangle,
-  Clock,
-  Sparkles,
-  ExternalLink,
-  History,
-  Send,
-  User,
-  QrCode,
-  ShieldAlert,
-} from 'lucide-react';
+import { BellRing, MessageCircle, Smartphone, Copy, Check, CheckCircle2, X, Phone, AlertTriangle, Sparkles, ExternalLink, History, QrCode, ShieldAlert } from 'lucide-react';
 
 interface CustomerDebtReminderModalProps {
   customer: Customer | null;
@@ -75,7 +56,6 @@ export const CustomerDebtReminderModal: React.FC<CustomerDebtReminderModalProps>
   if (!isOpen || !customer) return null;
 
   const phone = customer.phone || '';
-  const cleanPhone = cleanPhoneNumber(phone);
   const zaloUrl = getZaloChatUrl(phone);
   const telUrl = getTelUrl(phone);
   const smsUrl = getSmsUrl(phone, customizedText);

@@ -8,7 +8,7 @@ import {
   getDocs,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, auth } from './config';
+import { db, handleFirestoreError, OperationType } from './config';
 import { type Order, type Customer, type Product, type CondoLocation, type StockLog, type StaffUser, type StoreBankConfig } from '../types';
 
 export interface FirebaseSyncCallbacks {

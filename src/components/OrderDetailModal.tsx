@@ -1,41 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { type Order, type PaymentMethod, getOrderCost, getOrderPrice, getOrderProfit, type Customer } from '../types';
+import { type Order, getOrderCost, getOrderPrice, getOrderProfit, type Customer } from '../types';
 import { ProofOfDeliveryCameraModal } from './ProofOfDeliveryCameraModal';
 import { VietQRModal } from './VietQRModal';
 import { ShipperQuickContactModal } from './ShipperQuickContactModal';
 import { BankSettingsModal } from './BankSettingsModal';
 import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
 import { getZaloChatUrl, cleanPhoneNumber } from '../utils/vietqr';
-import {
-  X,
-  CheckCircle2,
-  Clock,
-  Rocket,
-  Banknote,
-  Phone,
-  MessageCircle,
-  QrCode,
-  Building2,
-  MapPin,
-  FileText,
-  Lock,
-  Copy,
-  Check,
-  Truck,
-  UserCheck,
-  Package,
-  Camera,
-  ArrowRight,
-  ExternalLink,
-  Repeat,
-  TrendingUp,
-  Maximize2,
-  Download,
-  Sparkles,
-  Receipt,
-} from 'lucide-react';
+import { X, CheckCircle2, Clock, Rocket, Banknote, Phone, MessageCircle, QrCode, Building2, MapPin, FileText, Lock, Copy, Check, Truck, UserCheck, Package, Camera, ExternalLink, Repeat, TrendingUp, Maximize2, Download, Sparkles, Receipt } from 'lucide-react';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -54,7 +27,6 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     markReadyForDelivery,
     markDelivered,
     markPaid,
-    currentUser,
     setCurrentScreen,
     setGlobalSearchQuery,
     roleConfig,

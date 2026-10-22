@@ -11,37 +11,7 @@ import { BankSettingsModal } from './BankSettingsModal';
 import { ShipperQuickContactModal } from './ShipperQuickContactModal';
 import { getZaloChatUrl } from '../utils/vietqr';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
-import {
-  ArrowLeft,
-  Truck,
-  Building2,
-  CheckCircle2,
-  Phone,
-  MessageCircle,
-  QrCode,
-  FileText,
-  Clock,
-  UserCheck,
-  MapPin,
-  Sparkles,
-  Search,
-  X,
-  Filter,
-  AlertCircle,
-  AlertTriangle,
-  SlidersHorizontal,
-  Lock,
-  CheckSquare,
-  Square,
-  PackageCheck,
-  Layers,
-  Tag,
-  Rocket,
-  Camera,
-  Printer,
-  FileDown,
-  Route as RouteIcon,
-} from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Phone, MessageCircle, QrCode, FileText, Clock, UserCheck, MapPin, Sparkles, Search, X, Filter, AlertCircle, AlertTriangle, Lock, CheckSquare, Square, PackageCheck, Layers, Rocket, Camera, Printer, Route as RouteIcon } from 'lucide-react';
 
 export const DeliveryModeScreen: React.FC = () => {
   const { condos, orders, markReadyForDelivery, markDelivered, markMultipleDelivered, currentUser, setCurrentScreen, schedulerConfig } = useApp();

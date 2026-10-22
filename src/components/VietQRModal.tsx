@@ -3,21 +3,7 @@ import { useApp } from '../context/AppContext';
 import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import { generateVietQrUrl } from '../utils/vietqr';
-import {
-  QrCode,
-  Copy,
-  Check,
-  CheckCircle2,
-  X,
-  CreditCard,
-  Building2,
-  Share2,
-  Download,
-  AlertCircle,
-  ExternalLink,
-  Settings,
-  Sparkles,
-} from 'lucide-react';
+import { QrCode, Copy, Check, CheckCircle2, X, Building2, AlertCircle, ExternalLink, Settings } from 'lucide-react';
 
 interface VietQRModalProps {
   order: Order | null;

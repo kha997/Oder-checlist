@@ -1,25 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { type Order, type Product, type OrderPriority } from '../types';
+import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
-import { exportElementToPdf, downloadHtmlReport } from '../utils/pdfExport';
-import { exportCurrentOrderListCsv, exportSalesOrdersCsv, exportConsolidatedReportCsv } from '../utils/csvExport';
-import {
-  X,
-  FileDown,
-  Printer,
-  FileSpreadsheet,
-  FileText,
-  CheckCircle2,
-  AlertTriangle,
-  Building2,
-  Calendar,
-  Layers,
-  Sparkles,
-  Loader2,
-  Eye,
-  Sliders,
-  Share2,
-} from 'lucide-react';
+import { exportElementToPdf } from '../utils/pdfExport';
+import { exportCurrentOrderListCsv, exportSalesOrdersCsv } from '../utils/csvExport';
+import { X, FileDown, Printer, FileSpreadsheet, FileText, Building2, Layers, Loader2 } from 'lucide-react';
 
 export type ExportDocumentType = 'ACCOUNTING_REPORT' | 'DELIVERY_MANIFEST' | 'ORDER_SUMMARY';
 
@@ -27,7 +11,6 @@ interface ExportOrderReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   orders: Order[];
-  products?: Product[];
   title?: string;
   periodLabel?: string;
   defaultDocType?: ExportDocumentType;
@@ -38,8 +21,9 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
   isOpen,
   onClose,
   orders,
-  products = [],
-  title = 'Báo cáo & Danh sách đơn hàng',
+  // NOTE: the optional `title` prop is declared above but not consumed — the
+  // printable heading is derived from `docType` instead. Kept in the props
+  // type because 4 call sites pass it; see README "Known gaps".
   periodLabel = 'Hôm nay',
   defaultDocType = 'ACCOUNTING_REPORT',
   currentUser = 'Quản lý',
@@ -90,7 +74,6 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
   const unpaidCount = sortedOrders.filter((o) => o.paymentStatus === 'UNPAID').length;
   const highPriorityCount = sortedOrders.filter((o) => o.priority === 'HIGH').length;
 
-  const collectionRate = totalSales > 0 ? Math.round((totalCollected / totalSales) * 100) : 100;
   const isReconciled = totalSales === cashReceived + bankReceived + totalUnpaid;
 
   const currentDateFormatted = new Date().toLocaleDateString('vi-VN', {
@@ -138,16 +121,6 @@ export const ExportOrderReportModal: React.FC<ExportOrderReportModalProps> = ({
       exportCurrentOrderListCsv(sortedOrders, periodLabel, fileSlug);
       showNotification(`✓ Đã xuất ${sortedOrders.length} đơn hàng sang file CSV!`);
     }
-  };
-
-  const handleExportHtml = () => {
-    if (!printAreaRef.current) return;
-    downloadHtmlReport(
-      `${fileSlug}.html`,
-      title,
-      printAreaRef.current.innerHTML
-    );
-    showNotification('✓ Đã tải file HTML lưu trữ đối soát!');
   };
 
   return (

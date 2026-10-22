@@ -1,25 +1,9 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { type Order, type OrderPriority } from '../types';
+import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { downloadCsv, escapeCsvCell } from '../utils/csvExport';
-import {
-  Printer,
-  FileDown,
-  X,
-  Building2,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Package,
-  Layers,
-  FileSpreadsheet,
-  FileText,
-  Sliders,
-  Filter,
-  Check,
-  ChevronDown,
-} from 'lucide-react';
+import { Printer, FileDown, X, Building2, Clock, FileSpreadsheet } from 'lucide-react';
 
 export type ManifestScope = 'ALL_PENDING' | 'STRICT_PENDING' | 'OUT_FOR_DELIVERY';
 export type ManifestSortBy = 'LOCATION' | 'PRIORITY_TIME' | 'ORDER_ID';
@@ -44,7 +28,7 @@ export const PrintManifestModal: React.FC<PrintManifestModalProps> = ({
   const [showItemDetails, setShowItemDetails] = useState<boolean>(true);
   const [showDeliveryNotes, setShowDeliveryNotes] = useState<boolean>(true);
   const [showSignatureBlock, setShowSignatureBlock] = useState<boolean>(true);
-  const [showCheckboxes, setShowCheckboxes] = useState<boolean>(true);
+  const [showCheckboxes] = useState<boolean>(true);
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [exportProgressText, setExportProgressText] = useState<string>('');
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { type Order, type OrderPriority, getOrderTagColor } from '../types';
+import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import {
   extractFloorNumber,
@@ -10,35 +10,7 @@ import {
   optimizeByBlockCluster,
   optimizeByPriorityAndDue,
 } from '../utils/routeOptimizer';
-import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
-import {
-  GripVertical,
-  ArrowUp,
-  ArrowDown,
-  Sparkles,
-  Zap,
-  Building2,
-  MapPin,
-  Clock,
-  Truck,
-  CheckCircle2,
-  Phone,
-  FileText,
-  AlertTriangle,
-  RotateCcw,
-  Check,
-  Printer,
-  ChevronDown,
-  ChevronUp,
-  Layers,
-  Compass,
-  ArrowUpDown,
-  Navigation,
-  Save,
-  Route as RouteIcon,
-  HelpCircle,
-  Eye,
-} from 'lucide-react';
+import { GripVertical, ArrowDown, Sparkles, Zap, Building2, Truck, CheckCircle2, Phone, FileText, RotateCcw, Printer, ChevronDown, ChevronUp, ArrowUpDown, Save, Route as RouteIcon } from 'lucide-react';
 
 interface RouteMapViewProps {
   onOpenDetailModal?: (order: Order) => void;
@@ -54,9 +26,6 @@ export const RouteMapView: React.FC<RouteMapViewProps> = ({
     reorderDeliverySequence,
     markOutForDelivery,
     markDelivered,
-    markPaid,
-    currentUser,
-    schedulerConfig,
   } = useApp();
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -536,9 +505,7 @@ export const RouteMapView: React.FC<RouteMapViewProps> = ({
                 const isPaid = order.paymentStatus === 'PAID';
                 const isDelivered = order.deliveryStatus === 'DELIVERED';
                 const isOutForDelivery = order.deliveryStatus === 'OUT_FOR_DELIVERY';
-                const isReady = order.deliveryStatus === 'READY_FOR_DELIVERY';
 
-                const dueStatus = getOrderDeliveryDueStatus(order, schedulerConfig.outForDeliveryReminderMinutes);
                 const floorNum = extractFloorNumber(order);
                 const blockName = extractBlockName(order);
 

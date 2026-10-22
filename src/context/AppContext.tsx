@@ -1,32 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
-import {
-  type Product,
-  type Customer,
-  type CondoLocation,
-  type Order,
-  type StockLog,
-  type ScreenType,
-  type PaymentMethod,
-  type OrderItem,
-  type OrderLocation,
-  type OrderPriority,
-  type DeliveryStatus,
-  type RecurringFrequency,
-  calculateNextRecurringDate,
-  type AppNotification,
-  type NotificationType,
-  type NotificationSchedulerConfig,
-  DEFAULT_SCHEDULER_CONFIG,
-  getOrderPrice,
-  getOrderCost,
-  type UserRole,
-  type RoleConfig,
-  ROLE_CONFIGS,
-  type StaffUser,
-  type StoreBankConfig,
-  DEFAULT_BANK_CONFIG,
-  type CustomerDebtSummary,
-} from '../types';
+import { type Product, type Customer, type CondoLocation, type Order, type StockLog, type ScreenType, type PaymentMethod, type OrderItem, type OrderLocation, type OrderPriority, type DeliveryStatus, type RecurringFrequency, calculateNextRecurringDate, type AppNotification, type NotificationType, type NotificationSchedulerConfig, DEFAULT_SCHEDULER_CONFIG, getOrderCost, type UserRole, type RoleConfig, ROLE_CONFIGS, type StaffUser, type StoreBankConfig, DEFAULT_BANK_CONFIG, type CustomerDebtSummary } from '../types';
 import {
   INITIAL_PRODUCTS,
   INITIAL_CONDOS,
@@ -48,20 +21,7 @@ import {
 } from '../utils/browserNotification';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, signInWithPopup, signOut, googleProvider } from '../firebase/config';
-import {
-  subscribeToFirebaseCollections,
-  upsertOrderFirestore,
-  updateOrderFirestore,
-  deleteOrderFirestore,
-  upsertCustomerFirestore,
-  upsertProductFirestore,
-  upsertCondoFirestore,
-  addStockLogFirestore,
-  upsertStaffUserFirestore,
-  deleteStaffUserFirestore,
-  upsertBankConfigFirestore,
-  seedLocalDataToFirestoreIfEmpty,
-} from '../firebase/firestoreService';
+import { subscribeToFirebaseCollections, upsertOrderFirestore, updateOrderFirestore, upsertCustomerFirestore, upsertProductFirestore, upsertCondoFirestore, addStockLogFirestore, upsertStaffUserFirestore, deleteStaffUserFirestore, upsertBankConfigFirestore, seedLocalDataToFirestoreIfEmpty } from '../firebase/firestoreService';
 
 interface AppContextType {
   // Navigation
@@ -1472,7 +1432,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  const recordCustomerDebtReminder = (customerId: string, channel: 'ZALO' | 'SMS') => {
+  const recordCustomerDebtReminder = (customerId: string, _channel: 'ZALO' | 'SMS') => {
     const now = new Date().toISOString();
     setCustomers((prev) =>
       prev.map((c) => {

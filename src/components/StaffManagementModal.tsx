@@ -1,30 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { type UserRole, ROLE_CONFIGS, type StaffUser } from '../types';
-import {
-  Users,
-  Shield,
-  ShieldCheck,
-  UserCheck,
-  Plus,
-  Edit2,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  X,
-  Phone,
-  Mail,
-  Bike,
-  UtensilsCrossed,
-  Wallet,
-  Crown,
-  KeyRound,
-  Eye,
-  EyeOff,
-  CloudCheck,
-  Check,
-} from 'lucide-react';
+import { Users, Shield, ShieldCheck, UserCheck, Plus, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, Phone, Bike, UtensilsCrossed, Wallet, Crown, Check } from 'lucide-react';
 
 interface StaffManagementModalProps {
   isOpen: boolean;
@@ -39,9 +16,7 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
     addStaffUser,
     updateStaffUser,
     deleteStaffUser,
-    currentRole,
     roleConfig,
-    firebaseUser,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'switch' | 'manage' | 'matrix'>('switch');

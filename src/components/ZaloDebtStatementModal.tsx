@@ -9,29 +9,13 @@ import {
   generateCustomerDebtZaloStatement,
   generateCustomerDebtVietQrUrl,
 } from '../utils/vietqr';
-import {
-  MessageCircle,
-  Copy,
-  Check,
-  CheckCircle2,
-  X,
-  Phone,
-  QrCode,
-  Printer,
-  Building2,
-  Calendar,
-  AlertCircle,
-  ExternalLink,
-  Receipt,
-  Share2,
-} from 'lucide-react';
+import { MessageCircle, Copy, Check, X, Phone, QrCode, Printer, AlertCircle, ExternalLink, Receipt } from 'lucide-react';
 
 interface ZaloDebtStatementModalProps {
   customer: Customer | null;
   unpaidOrders: Order[];
   isOpen: boolean;
   onClose: () => void;
-  onOpenVietQrModal?: (amount: number, memo: string) => void;
 }
 
 export const ZaloDebtStatementModal: React.FC<ZaloDebtStatementModalProps> = ({
@@ -39,7 +23,6 @@ export const ZaloDebtStatementModal: React.FC<ZaloDebtStatementModalProps> = ({
   unpaidOrders,
   isOpen,
   onClose,
-  onOpenVietQrModal,
 }) => {
   const { bankConfig } = useApp();
   const [copied, setCopied] = useState(false);
@@ -246,7 +229,7 @@ export const ZaloDebtStatementModal: React.FC<ZaloDebtStatementModalProps> = ({
               Bảng chi tiết {unpaidOrders.length} đơn nợ:
             </span>
             <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs">
-              {unpaidOrders.map((ord, idx) => (
+              {unpaidOrders.map((ord) => (
                 <div key={ord.id} className="p-2.5 bg-white flex items-center justify-between gap-2">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-1.5">

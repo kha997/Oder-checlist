@@ -8,36 +8,7 @@ import { PrintManifestModal } from './PrintManifestModal';
 import { type Order, getOrderTagColor } from '../types';
 import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
 import { removeVietnameseTones } from '../utils/searchHelper';
-import {
-  PlusCircle,
-  Truck,
-  AlertCircle,
-  Boxes,
-  BarChart3,
-  CheckCircle2,
-  Building2,
-  ArrowRight,
-  TrendingUp,
-  Search,
-  History,
-  Users,
-  X,
-  Tag,
-  Clock,
-  Phone,
-  MapPin,
-  FileText,
-  AlertTriangle,
-  Package,
-  Check,
-  ChevronRight,
-  Filter,
-  FileDown,
-  Printer,
-  Repeat,
-  Calendar,
-  Plus,
-} from 'lucide-react';
+import { PlusCircle, Truck, AlertCircle, Boxes, BarChart3, CheckCircle2, Building2, ArrowRight, TrendingUp, Search, History, Users, X, Tag, Clock, Phone, FileText, Package, Check, ChevronRight, FileDown, Printer, Repeat, Calendar, Plus } from 'lucide-react';
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -51,8 +22,6 @@ export const HomeScreen: React.FC = () => {
     toggleRecurringSchedule,
     schedulerConfig,
     roleConfig,
-    currentRole,
-    activeStaff,
     globalSearchQuery,
     setGlobalSearchQuery,
   } = useApp();
@@ -1085,7 +1054,6 @@ export const HomeScreen: React.FC = () => {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         orders={filteredOrders}
-        products={products}
         title="Danh sách Đơn hàng"
         periodLabel="Hôm nay"
         defaultDocType="ACCOUNTING_REPORT"

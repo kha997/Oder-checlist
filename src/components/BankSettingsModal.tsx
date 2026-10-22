@@ -1,17 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { VIETNAM_POPULAR_BANKS, type BankDirectoryItem, generateVietQrUrl } from '../utils/vietqr';
-import {
-  CreditCard,
-  Building2,
-  CheckCircle2,
-  X,
-  Search,
-  Save,
-  QrCode,
-  ShieldCheck,
-  Check,
-} from 'lucide-react';
+import { VIETNAM_POPULAR_BANKS, generateVietQrUrl } from '../utils/vietqr';
+import { CreditCard, CheckCircle2, X, Search, Save } from 'lucide-react';
 
 interface BankSettingsModalProps {
   isOpen: boolean;

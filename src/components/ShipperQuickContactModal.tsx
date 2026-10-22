@@ -3,24 +3,11 @@ import { useApp } from '../context/AppContext';
 import { type Order } from '../types';
 import { formatVND } from '../utils/storage';
 import {
-  cleanPhoneNumber,
   getZaloChatUrl,
   getTelUrl,
   getShipperMessageTemplates,
 } from '../utils/vietqr';
-import {
-  Phone,
-  MessageCircle,
-  QrCode,
-  Copy,
-  Check,
-  X,
-  ExternalLink,
-  Building2,
-  FileText,
-  User,
-  Sparkles,
-} from 'lucide-react';
+import { Phone, MessageCircle, QrCode, Copy, Check, X, Sparkles } from 'lucide-react';
 
 interface ShipperQuickContactModalProps {
   order: Order | null;
@@ -41,7 +28,6 @@ export const ShipperQuickContactModal: React.FC<ShipperQuickContactModalProps> =
   if (!isOpen || !order) return null;
 
   const phone = order.customerPhone || '';
-  const cleanPhone = cleanPhoneNumber(phone);
   const zaloUrl = getZaloChatUrl(phone);
   const telUrl = getTelUrl(phone);
   const templates = getShipperMessageTemplates(order, bankConfig);

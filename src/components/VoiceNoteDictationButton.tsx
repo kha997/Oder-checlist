@@ -1,14 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  Check,
-  X,
-  AlertCircle,
-  Sparkles,
-  HelpCircle,
-} from 'lucide-react';
+import { Mic, MicOff, Volume2, X, AlertCircle, Sparkles, HelpCircle } from 'lucide-react';
 import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,

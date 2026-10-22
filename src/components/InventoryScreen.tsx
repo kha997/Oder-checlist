@@ -2,22 +2,10 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
 import { type Product } from '../types';
-import {
-  ArrowLeft,
-  Boxes,
-  Plus,
-  PlusCircle,
-  History,
-  Edit2,
-  Check,
-  AlertTriangle,
-  TrendingDown,
-  PackageCheck,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, Boxes, Plus, PlusCircle, History, Edit2, AlertTriangle, TrendingDown, X } from 'lucide-react';
 
 export const InventoryScreen: React.FC = () => {
-  const { products, addProduct, updateProduct, addStockReceived, stockLogs, setCurrentScreen, roleConfig, activeStaff } = useApp();
+  const { products, addProduct, updateProduct, addStockReceived, stockLogs, setCurrentScreen, roleConfig } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRestockModal, setShowRestockModal] = useState<Product | null>(null);

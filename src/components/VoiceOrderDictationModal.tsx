@@ -1,24 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { type Product, type CondoLocation } from '../types';
 import { formatVND } from '../utils/storage';
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  Check,
-  X,
-  Sparkles,
-  ShoppingBag,
-  Building2,
-  User,
-  Phone,
-  FileText,
-  AlertCircle,
-  HelpCircle,
-  Play,
-  RotateCcw,
-} from 'lucide-react';
+import { Mic, MicOff, Volume2, Check, X, Sparkles, ShoppingBag, Building2, User, Phone, FileText, AlertCircle, Play, RotateCcw } from 'lucide-react';
 import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,

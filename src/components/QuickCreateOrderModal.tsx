@@ -1,39 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import {
-  type OrderItem,
-  type OrderLocation,
-  type OrderPriority,
-  type PaymentMethod,
-  ORDER_PRIORITY_OPTIONS,
-  type RecurringFrequency,
-  RECURRING_FREQUENCY_OPTIONS,
-  calculateNextRecurringDate,
-} from '../types';
+import { type OrderItem, type OrderLocation, type OrderPriority, type PaymentMethod, type RecurringFrequency, RECURRING_FREQUENCY_OPTIONS, calculateNextRecurringDate } from '../types';
 import { GooglePlacesAddressLookup } from './GooglePlacesAddressLookup';
 import { type GooglePlaceSuggestion } from '../utils/googlePlacesService';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { VoiceNoteDictationButton } from './VoiceNoteDictationButton';
-import {
-  Plus,
-  Minus,
-  X,
-  CheckCircle2,
-  Building2,
-  MapPin,
-  FileText,
-  User,
-  Phone,
-  Banknote,
-  Sparkles,
-  ArrowRight,
-  AlertCircle,
-  Truck,
-  Repeat,
-  Clock,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { Plus, Minus, X, CheckCircle2, MapPin, User, Sparkles, Truck, Repeat, Clock, Image as ImageIcon } from 'lucide-react';
 
 interface QuickCreateOrderModalProps {
   isOpen: boolean;
@@ -76,7 +49,7 @@ export const QuickCreateOrderModal: React.FC<QuickCreateOrderModalProps> = ({
   const [internalNote, setInternalNote] = useState('');
   const [priority, setPriority] = useState<OrderPriority>('MEDIUM');
   const [paymentStatus, setPaymentStatus] = useState<'UNPAID' | 'PAID'>('UNPAID');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [paymentMethod] = useState<PaymentMethod>('CASH');
 
   // Recurring Order State
   const [isRecurring, setIsRecurring] = useState(false);

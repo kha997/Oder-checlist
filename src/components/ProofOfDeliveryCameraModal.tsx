@@ -2,24 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { type Order } from '../types';
 import { playNotificationSound } from '../utils/soundNotification';
-import {
-  Camera,
-  X,
-  RefreshCw,
-  Zap,
-  ZapOff,
-  Upload,
-  CheckCircle2,
-  Building2,
-  MapPin,
-  Sparkles,
-  RotateCcw,
-  Check,
-  FileText,
-  AlertCircle,
-  Truck,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { Camera, X, RefreshCw, Zap, ZapOff, Upload, CheckCircle2, Sparkles, RotateCcw, Check, AlertCircle, Image as ImageIcon } from 'lucide-react';
 
 interface ProofOfDeliveryCameraModalProps {
   isOpen: boolean;
