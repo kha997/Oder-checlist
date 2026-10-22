@@ -2,32 +2,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   searchOrders,
-  OrderSearchMatch,
+  type OrderSearchMatch,
   getHighlightedTextSegments,
 } from '../utils/searchHelper';
 import { formatVND } from '../utils/storage';
-import { Order } from '../types';
-import {
-  Search,
-  X,
-  Building2,
-  MapPin,
-  CheckCircle2,
-  Clock,
-  Rocket,
-  ArrowRight,
-  Phone,
-  Copy,
-  Check,
-  Eye,
-  SlidersHorizontal,
-  Sparkles,
-  Command,
-  Truck,
-  RotateCcw,
-  Mic,
-  MicOff,
-} from 'lucide-react';
+import { type Order } from '../types';
+import { Search, X, Building2, MapPin, CheckCircle2, Clock, Rocket, ArrowRight, Phone, Copy, Check, Eye, Sparkles, Mic, MicOff } from 'lucide-react';
 import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,

@@ -1,4 +1,4 @@
-import { Order } from '../types';
+import { type Order } from '../types';
 
 /**
  * Remove Vietnamese accents/diacritics for flexible search
@@ -62,10 +62,8 @@ export function searchOrders(orders: Order[], query: string): OrderSearchMatch[]
     const cleanFormattedAddr = removeVietnameseTones(formattedAddr);
 
     const extAddr = loc.externalAddress || '';
-    const cleanExtAddr = removeVietnameseTones(extAddr);
 
     const condoName = loc.condoName || '';
-    const cleanCondoName = removeVietnameseTones(condoName);
 
     const block = loc.block || '';
     const cleanBlock = removeVietnameseTones(block);

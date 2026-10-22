@@ -1,4 +1,4 @@
-import { Product, CondoLocation } from '../types';
+import { type Product, type CondoLocation } from '../types';
 import { removeVietnameseTones } from './searchHelper';
 
 // TypeScript declarations for Web Speech API
@@ -395,7 +395,6 @@ export function parseVoiceOrder(
   condos: CondoLocation[]
 ): ParsedVoiceOrder {
   const rawTranscript = transcript.trim();
-  const lowerTranscript = rawTranscript.toLowerCase();
   const cleanTranscript = removeVietnameseTones(rawTranscript);
 
   const matchedItems: ParsedVoiceOrder['matchedItems'] = [];

@@ -6,10 +6,10 @@ import {
   deleteDoc,
   onSnapshot,
   getDocs,
-  Unsubscribe,
+  type Unsubscribe,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, auth } from './config';
-import { Order, Customer, Product, CondoLocation, StockLog, StaffUser, StoreBankConfig } from '../types';
+import { db, handleFirestoreError, OperationType } from './config';
+import { type Order, type Customer, type Product, type CondoLocation, type StockLog, type StaffUser, type StoreBankConfig } from '../types';
 
 export interface FirebaseSyncCallbacks {
   onOrdersChange?: (orders: Order[]) => void;
@@ -292,7 +292,10 @@ export async function upsertStaffUserFirestore(staff: StaffUser): Promise<void> 
   const path = `users/${staff.id}`;
   try {
     const docRef = doc(db, 'users', staff.id);
-    await setDoc(docRef, sanitizeForFirestore(staff), { merge: true });
+    // Full overwrite (no `merge`): staff records are always written as a
+    // complete object, and this also drops any stale legacy field — notably
+    // `pin`, which firestore.rules now rejects outright.
+    await setDoc(docRef, sanitizeForFirestore(staff));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

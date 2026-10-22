@@ -1,48 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, Order, PaymentMethod } from '../types';
+import { type Customer, type Order, type PaymentMethod } from '../types';
 import { formatVND } from '../utils/storage';
-import {
-  cleanPhoneNumber,
-  getZaloChatUrl,
-  getTelUrl,
-  generateCustomerDebtVietQrUrl,
-} from '../utils/vietqr';
+import { cleanPhoneNumber, getZaloChatUrl, getTelUrl } from '../utils/vietqr';
 import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';
 import { VietQRModal } from './VietQRModal';
 import { CustomerDebtReminderModal } from './CustomerDebtReminderModal';
-import {
-  X,
-  User,
-  Phone,
-  Building2,
-  MapPin,
-  FileText,
-  AlertTriangle,
-  CheckCircle2,
-  Receipt,
-  Wallet,
-  Clock,
-  Banknote,
-  Landmark,
-  QrCode,
-  MessageCircle,
-  ShieldAlert,
-  Crown,
-  Edit2,
-  Save,
-  CheckSquare,
-  Square,
-  Sparkles,
-  ExternalLink,
-  PlusCircle,
-  HelpCircle,
-  Printer,
-  ChevronRight,
-  TrendingUp,
-  BellRing,
-  History,
-} from 'lucide-react';
+import { X, User, Phone, MapPin, AlertTriangle, CheckCircle2, Receipt, Clock, Banknote, Landmark, QrCode, MessageCircle, Crown, Edit2, Save, CheckSquare, Square, PlusCircle, BellRing } from 'lucide-react';
 
 interface CustomerDebtLedgerModalProps {
   customer: Customer | null;
@@ -58,13 +22,9 @@ export const CustomerDebtLedgerModal: React.FC<CustomerDebtLedgerModalProps> = (
   onOpenCreateOrder,
 }) => {
   const {
-    orders,
-    bankConfig,
     markPaid,
     markMultiplePaid,
     updateCustomer,
-    currentUser,
-    roleConfig,
     calculateCustomerDebt,
   } = useApp();
 
@@ -103,7 +63,6 @@ export const CustomerDebtLedgerModal: React.FC<CustomerDebtLedgerModalProps> = (
     totalSpent,
     totalOrdersCount,
     unpaidCount,
-    oldestUnpaidOrder,
     daysSinceOldestDebt,
     isOverdue,
     isOverLimit,

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { PaymentMethod, OrderPriority, Order, Customer } from '../types';
+import { type PaymentMethod, type OrderPriority, type Order, type Customer } from '../types';
 import { VietQRModal } from './VietQRModal';
 import { ShipperQuickContactModal } from './ShipperQuickContactModal';
 import { BankSettingsModal } from './BankSettingsModal';
@@ -9,33 +9,7 @@ import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
 import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';
 import { CustomerDebtReminderModal } from './CustomerDebtReminderModal';
 import { getZaloChatUrl, cleanPhoneNumber } from '../utils/vietqr';
-import {
-  ArrowLeft,
-  Wallet,
-  Building2,
-  Phone,
-  MessageCircle,
-  QrCode,
-  Banknote,
-  Landmark,
-  CheckCircle2,
-  Clock,
-  UserCheck,
-  Search,
-  Sparkles,
-  X,
-  Filter,
-  FileText,
-  Lock,
-  AlertTriangle,
-  Receipt,
-  Users,
-  ChevronDown,
-  ChevronUp,
-  Crown,
-  ExternalLink,
-  BellRing,
-} from 'lucide-react';
+import { ArrowLeft, Wallet, Building2, Phone, MessageCircle, QrCode, Banknote, Landmark, CheckCircle2, Clock, UserCheck, Search, Sparkles, X, Filter, FileText, Lock, AlertTriangle, Receipt, ChevronDown, ChevronUp, Crown, BellRing } from 'lucide-react';
 
 export const UnpaidScreen: React.FC = () => {
   const {

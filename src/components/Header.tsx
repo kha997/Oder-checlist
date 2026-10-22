@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
@@ -7,19 +7,8 @@ import { FirebaseSyncModal } from './FirebaseSyncModal';
 import { StaffManagementModal } from './StaffManagementModal';
 import { BankSettingsModal } from './BankSettingsModal';
 import { GlobalSearchBar } from './GlobalSearchBar';
-import { Order } from '../types';
-import {
-  ClipboardCheck,
-  UserCheck,
-  RotateCcw,
-  Home,
-  History,
-  Bell,
-  Cloud,
-  CloudOff,
-  QrCode,
-  Users,
-} from 'lucide-react';
+import { type Order } from '../types';
+import { ClipboardCheck, RotateCcw, Home, History, Bell, Cloud, CloudOff, QrCode, Users } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const {

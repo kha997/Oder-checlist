@@ -1,23 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Search, MapPin, Building2, CheckCircle2, X, Compass, Sparkles, History, ChevronRight, Landmark, Store, Layers, ShieldCheck } from 'lucide-react';
 import {
-  Search,
-  MapPin,
-  Building2,
-  CheckCircle2,
-  X,
-  Compass,
-  Sparkles,
-  History,
-  Check,
-  ChevronRight,
-  Landmark,
-  Store,
-  Layers,
-  ShieldCheck,
-} from 'lucide-react';
-import {
-  GooglePlaceSuggestion,
-  PlaceType,
+  type GooglePlaceSuggestion,
+  type PlaceType,
   searchStandardizedPlaces,
   formatStandardizedDeliveryLocation,
   STANDARDIZED_PLACES_DATABASE,

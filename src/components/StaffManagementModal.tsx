@@ -1,30 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole, ROLE_CONFIGS, StaffUser } from '../types';
-import {
-  Users,
-  Shield,
-  ShieldCheck,
-  UserCheck,
-  Plus,
-  Edit2,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  X,
-  Phone,
-  Mail,
-  Bike,
-  UtensilsCrossed,
-  Wallet,
-  Crown,
-  KeyRound,
-  Eye,
-  EyeOff,
-  CloudCheck,
-  Check,
-} from 'lucide-react';
+import { type UserRole, ROLE_CONFIGS, type StaffUser } from '../types';
+import { Users, Shield, ShieldCheck, UserCheck, Plus, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, Phone, Bike, UtensilsCrossed, Wallet, Crown, Check } from 'lucide-react';
 
 interface StaffManagementModalProps {
   isOpen: boolean;
@@ -39,9 +16,7 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
     addStaffUser,
     updateStaffUser,
     deleteStaffUser,
-    currentRole,
     roleConfig,
-    firebaseUser,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'switch' | 'manage' | 'matrix'>('switch');
@@ -53,7 +28,6 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
   const [formRole, setFormRole] = useState<UserRole>('SHIPPER');
   const [formPhone, setFormPhone] = useState('');
   const [formEmail, setFormEmail] = useState('');
-  const [formPin, setFormPin] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
@@ -64,7 +38,6 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
     setFormRole('SHIPPER');
     setFormPhone('');
     setFormEmail('');
-    setFormPin('');
     setFormError(null);
     setEditingStaffId(null);
     setShowAddForm(true);
@@ -76,7 +49,6 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
     setFormRole(staff.role);
     setFormPhone(staff.phone || '');
     setFormEmail(staff.email || '');
-    setFormPin(staff.pin || '');
     setFormError(null);
     setEditingStaffId(staff.id);
     setShowAddForm(true);
@@ -96,7 +68,6 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
         role: formRole,
         phone: formPhone.trim() || undefined,
         email: formEmail.trim() || undefined,
-        pin: formPin.trim() || undefined,
       });
       setSuccessNotice(`Đã cập nhật thông tin cho ${formName.trim()}`);
     } else {
@@ -105,7 +76,6 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
         role: formRole,
         phone: formPhone.trim() || undefined,
         email: formEmail.trim() || undefined,
-        pin: formPin.trim() || undefined,
         active: true,
       });
       setSuccessNotice(`Đã thêm nhân viên mới: ${formName.trim()}`);

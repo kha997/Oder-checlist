@@ -1,21 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import {
-  Cloud,
-  CloudCheck,
-  CloudOff,
-  RefreshCw,
-  LogOut,
-  ShieldCheck,
-  CheckCircle2,
-  Database,
-  Users,
-  Package,
-  Layers,
-  X,
-  AlertCircle,
-  ExternalLink,
-} from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, LogOut, ShieldCheck, CheckCircle2, Database, X, AlertCircle } from 'lucide-react';
 
 interface FirebaseSyncModalProps {
   isOpen: boolean;
@@ -25,13 +10,10 @@ interface FirebaseSyncModalProps {
 export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, onClose }) => {
   const {
     firebaseUser,
-    cloudSyncStatus,
     lastCloudSyncTime,
-    isCloudSyncActive,
     orders,
     customers,
     products,
-    condos,
     stockLogs,
     staffUsers,
     signInWithGoogle,

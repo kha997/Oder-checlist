@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Bell, Rocket, X, ArrowRight, Volume2, VolumeX, Clock, Repeat, AlertTriangle } from 'lucide-react';
+import { Bell, Rocket, X, ArrowRight, Volume2, VolumeX, Clock, Repeat } from 'lucide-react';
 
 export const NotificationToast: React.FC = () => {
   const {
@@ -20,7 +20,6 @@ export const NotificationToast: React.FC = () => {
   const isDue = type === 'OUT_FOR_DELIVERY_DUE';
   const isRecurring = type === 'RECURRING_ORDER_GENERATED';
   const isReady = type === 'READY_FOR_DELIVERY';
-  const isNew = type === 'NEW_ORDER';
 
   const handleAction = () => {
     markNotificationAsRead(activeToastNotification.id);

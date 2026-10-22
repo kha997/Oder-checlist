@@ -1,43 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod, PREDEFINED_ORDER_TAGS, OrderPriority, ORDER_PRIORITY_OPTIONS } from '../types';
+import { type Order, type PaymentMethod, PREDEFINED_ORDER_TAGS, type OrderPriority, ORDER_PRIORITY_OPTIONS } from '../types';
 import { ExportOrderReportModal } from './ExportOrderReportModal';
-import { getOrderDeliveryDueStatus } from '../utils/notificationScheduler';
-import {
-  ArrowLeft,
-  History,
-  Search,
-  Calendar,
-  X,
-  Filter,
-  CheckCircle2,
-  Clock,
-  Phone,
-  Building2,
-  MapPin,
-  Lock,
-  FileText,
-  Banknote,
-  Landmark,
-  Copy,
-  Check,
-  Truck,
-  UserCheck,
-  AlertCircle,
-  SlidersHorizontal,
-  ChevronRight,
-  Package,
-  Tag,
-  Download,
-  FileSpreadsheet,
-  FileDown,
-  Printer,
-  CalendarRange,
-  AlertTriangle,
-  Rocket,
-  Camera,
-} from 'lucide-react';
+import { ArrowLeft, History, Search, Calendar, X, CheckCircle2, Clock, Phone, Building2, MapPin, Lock, FileText, Banknote, Landmark, Copy, Check, Truck, UserCheck, SlidersHorizontal, Package, Tag, Download, FileSpreadsheet, FileDown, CalendarRange, AlertTriangle, Rocket, Camera } from 'lucide-react';
 
 type DatePreset =
   | 'ALL'
@@ -51,7 +17,6 @@ type DatePreset =
 export const OrderHistoryScreen: React.FC = () => {
   const {
     orders,
-    products,
     markReadyForDelivery,
     markDelivered,
     markPaid,
@@ -59,7 +24,6 @@ export const OrderHistoryScreen: React.FC = () => {
     setCurrentScreen,
     globalSearchQuery,
     setGlobalSearchQuery,
-    schedulerConfig,
   } = useApp();
 
   // Filters
@@ -1569,7 +1533,6 @@ export const OrderHistoryScreen: React.FC = () => {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         orders={filteredOrders}
-        products={products}
         title="Danh sách Đơn hàng & Báo cáo"
         periodLabel={
           datePreset === 'TODAY'

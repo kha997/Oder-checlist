@@ -1,28 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, PaymentMethod } from '../types';
+import { type Order, type PaymentMethod } from '../types';
 import { playNotificationSound } from '../utils/soundNotification';
-import {
-  Camera,
-  X,
-  RefreshCw,
-  Zap,
-  ZapOff,
-  Upload,
-  CheckCircle2,
-  Banknote,
-  FileText,
-  AlertCircle,
-  Sparkles,
-  ArrowRight,
-  Maximize2,
-  Image as ImageIcon,
-  Building2,
-  Phone,
-  Package,
-  Plus,
-} from 'lucide-react';
+import { Camera, X, RefreshCw, Zap, ZapOff, Upload, CheckCircle2, Banknote, FileText, AlertCircle, Sparkles, Image as ImageIcon, Building2, Phone, Plus } from 'lucide-react';
 
 interface DeliveryReceiptScannerModalProps {
   isOpen: boolean;
@@ -39,7 +20,6 @@ export const DeliveryReceiptScannerModal: React.FC<DeliveryReceiptScannerModalPr
 
   // Camera & Stream State
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -47,7 +27,7 @@ export const DeliveryReceiptScannerModal: React.FC<DeliveryReceiptScannerModalPr
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [hasTorch, setHasTorch] = useState<boolean>(false);
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
-  const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [, setIsCapturing] = useState<boolean>(false);
 
   // Scanned / Captured Image
   const [capturedImage, setCapturedImage] = useState<string | null>(null);

@@ -1,32 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product, CondoLocation } from '../types';
 import { formatVND } from '../utils/storage';
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  Check,
-  X,
-  Sparkles,
-  ShoppingBag,
-  Building2,
-  User,
-  Phone,
-  FileText,
-  AlertCircle,
-  HelpCircle,
-  Play,
-  RotateCcw,
-} from 'lucide-react';
+import { Mic, MicOff, Volume2, Check, X, Sparkles, ShoppingBag, Building2, User, Phone, FileText, AlertCircle, Play, RotateCcw } from 'lucide-react';
 import {
   isSpeechRecognitionSupported,
   createSpeechRecognition,
   getSpeechErrorMessage,
   parseVoiceOrder,
   VOICE_ORDER_SAMPLE_PHRASES,
-  ParsedVoiceOrder,
-  ISpeechRecognition,
+  type ParsedVoiceOrder,
+  type ISpeechRecognition,
 } from '../utils/speechRecognition';
 
 interface VoiceOrderDictationModalProps {

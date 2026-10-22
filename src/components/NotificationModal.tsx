@@ -1,25 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import {
-  Bell,
-  Rocket,
-  CheckCircle,
-  X,
-  Volume2,
-  VolumeX,
-  ShieldCheck,
-  BellRing,
-  Trash2,
-  ArrowRight,
-  Clock,
-  Sparkles,
-  Repeat,
-  Sliders,
-  Calendar,
-  Check,
-  Play,
-  RotateCcw,
-} from 'lucide-react';
+import { Bell, Rocket, CheckCircle, X, Volume2, VolumeX, ShieldCheck, BellRing, Trash2, ArrowRight, Clock, Sparkles, Repeat, Play } from 'lucide-react';
 
 interface NotificationModalProps {
   isOpen: boolean;
@@ -458,7 +439,6 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                   const isNew = notif.type === 'NEW_ORDER';
                   const isDue = notif.type === 'OUT_FOR_DELIVERY_DUE';
                   const isRecurring = notif.type === 'RECURRING_ORDER_GENERATED';
-                  const isReady = notif.type === 'READY_FOR_DELIVERY';
 
                   return (
                     <div

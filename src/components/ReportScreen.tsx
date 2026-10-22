@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatVND } from '../utils/storage';
-import { Order, getOrderCost, getOrderPrice, getOrderProfit } from '../types';
+import { type Order, getOrderCost, getOrderPrice } from '../types';
 import {
   exportSalesOrdersCsv,
   exportInventoryCsv,
@@ -10,44 +10,8 @@ import {
 } from '../utils/csvExport';
 import { removeVietnameseTones } from '../utils/searchHelper';
 import { OrderDetailModal } from './OrderDetailModal';
-import { ExportOrderReportModal, ExportDocumentType } from './ExportOrderReportModal';
-import {
-  ArrowLeft,
-  BarChart3,
-  Calendar,
-  CalendarDays,
-  CheckCircle,
-  CheckCircle2,
-  Banknote,
-  Landmark,
-  AlertCircle,
-  Copy,
-  Boxes,
-  TrendingUp,
-  Receipt,
-  Share2,
-  Download,
-  FileSpreadsheet,
-  FileDown,
-  HardDrive,
-  Sparkles,
-  ShoppingBag,
-  Calculator,
-  ArrowRight,
-  Search,
-  X,
-  Building2,
-  MapPin,
-  Clock,
-  Rocket,
-  Camera,
-  ClipboardList,
-  FileText,
-  PiggyBank,
-  Percent,
-  Coins,
-  ShieldCheck,
-} from 'lucide-react';
+import { ExportOrderReportModal, type ExportDocumentType } from './ExportOrderReportModal';
+import { ArrowLeft, CalendarDays, CheckCircle, Banknote, Landmark, AlertCircle, Copy, Boxes, TrendingUp, Receipt, Download, FileSpreadsheet, FileDown, HardDrive, Sparkles, ShoppingBag, Calculator, ArrowRight, Search, X, Building2, MapPin, Camera, ClipboardList, FileText, PiggyBank, Percent, Coins, ShieldCheck } from 'lucide-react';
 
 export const ReportScreen: React.FC = () => {
   const { orders, products, setCurrentScreen, roleConfig, activeStaff } = useApp();
@@ -921,7 +885,7 @@ Oder Checklist - Quản lý đơn hàng & Tài chính`;
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {productProfitList.map(({ product, quantity, revenue, cost, profit, margin }) => (
+              {productProfitList.map(({ product, quantity, cost, profit, margin }) => (
                 <div
                   key={product.id}
                   className="bg-white p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs"
@@ -1448,7 +1412,6 @@ Oder Checklist - Quản lý đơn hàng & Tài chính`;
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         orders={exportModalOrders}
-        products={products}
         title={exportModalTitle}
         periodLabel={periodLabel}
         defaultDocType={exportModalDocType}

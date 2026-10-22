@@ -1,35 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, LocationType, Order } from '../types';
+import { type Customer, type LocationType } from '../types';
 import { formatVND } from '../utils/storage';
 import { CustomerDebtLedgerModal } from './CustomerDebtLedgerModal';
 import { ZaloDebtStatementModal } from './ZaloDebtStatementModal';
 import { CustomerDebtReminderModal } from './CustomerDebtReminderModal';
-import {
-  ArrowLeft,
-  Users,
-  Search,
-  Plus,
-  Building2,
-  MapPin,
-  Phone,
-  FileText,
-  Edit2,
-  Trash2,
-  ShoppingBag,
-  Sparkles,
-  X,
-  Check,
-  CheckCircle2,
-  AlertTriangle,
-  Receipt,
-  Wallet,
-  Crown,
-  MessageCircle,
-  AlertCircle,
-  Clock,
-  BellRing,
-} from 'lucide-react';
+import { ArrowLeft, Users, Search, Plus, Building2, MapPin, Phone, FileText, Edit2, Trash2, ShoppingBag, Sparkles, X, CheckCircle2, AlertTriangle, Receipt, Wallet, Crown, MessageCircle, AlertCircle, Clock, BellRing } from 'lucide-react';
 
 export const CustomersScreen: React.FC = () => {
   const {

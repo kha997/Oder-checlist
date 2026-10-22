@@ -1,66 +1,154 @@
-# Oder Checklist - Simple Order Management
+# Oder Checklist — Simple Order Management
 
-Ứng dụng quản lý danh sách đơn hàng, đóng gói và theo dõi giao nhận (Mobile-first Order Checklist & Delivery Management) dành cho người bán hàng trực tuyến, shipper và giao hàng nội khu / chung cư.
+Ứng dụng quản lý đơn hàng và giao nhận, thiết kế cho điện thoại (mobile-first PWA) dành cho người bán hàng online, shipper và giao hàng nội khu / chung cư.
 
----
-
-## 🌟 Tính năng nổi bật
-
-- **Quản lý danh sách đơn hàng linh hoạt:**
-  - Lọc nhanh theo trạng thái: Tất cả, Chờ xử lý (Pending), Đang giao (Delivering), Đã giao (Delivered), Đã hủy (Cancelled).
-  - Tìm kiếm thông minh theo mã đơn hàng, tên khách hàng, số điện thoại, địa chỉ hoặc món hàng.
-  - Sắp xếp thông minh (Smart Auto-sort): ưu tiên đơn hàng khẩn cấp (`Urgent`), đơn hẹn giờ và khoảng cách gần.
-
-- **Thao tác nhanh (Quick Actions):**
-  - Thanh Speed Dial / Menu thao tác nhanh nổi trên màn hình chính: Cập nhật trạng thái tức thì chỉ với một chạm.
-  - Thao tác hàng loạt (Bulk actions): Đổi trạng thái, gán người giao hàng, in ấn.
-
-- **Xác nhận giao hàng & Chụp ảnh đối chứng (Proof of Delivery - POD):**
-  - Chụp ảnh trực tiếp bằng camera thiết bị hoặc tải ảnh gói hàng đã giao.
-  - Lưu trữ ảnh bằng chứng gắn liền với chi tiết đơn hàng.
-
-- **In ấn & Xuất báo cáo đa năng:**
-  - **In Bảng Kê Giao Hàng (Print Manifest):** Bảng tổng hợp các đơn hàng chờ giao với thiết kế tối ưu hóa máy in A4/Bill theo tiêu chuẩn CSS print (@media print).
-  - Xuất báo cáo tài chính / đối soát và xuất file CSV / Excel.
-  - Hỗ trợ lưu trữ offline với LocalStorage.
+Chạy hoàn toàn trên trình duyệt: dữ liệu lưu trong `localStorage`, có thể đăng nhập Google để đồng bộ lên Firestore. Cài được lên màn hình chính và dùng offline như một app.
 
 ---
 
-## 🚀 Hướng dẫn cài đặt và chạy trên máy tính
+## 🌟 Tính năng
 
-### Yêu cầu hệ thống:
-- [Node.js](https://nodejs.org/) phiên bản 18+ trở lên
-- Trình quản lý gói `npm` hoặc `bun` / `pnpm` / `yarn`
+### 8 màn hình làm việc
 
-### Các bước khởi chạy:
+| Màn hình | Việc chính |
+| --- | --- |
+| **Trang chủ** (`HOME`) | Tổng quan trong ngày: doanh số, số đơn, đơn gấp, đơn hẹn giờ |
+| **Tạo đơn** (`CREATE_ORDER`) | Tạo đơn nhanh, có nhập bằng giọng nói (voice-to-text) |
+| **Giao hàng** (`DELIVERY`) | Chế độ shipper: sắp xếp lộ trình, gọi khách, chụp ảnh giao hàng (POD), thu COD |
+| **Chưa thu** (`UNPAID`) | Các đơn còn nợ tiền, gồm cả đơn đã giao và chưa giao |
+| **Kho hàng** (`INVENTORY`) | Tồn kho = tồn đầu + nhập thêm − đã bán |
+| **Lịch sử** (`ORDER_HISTORY`) | Tra cứu toàn bộ đơn theo ngày đặt, trạng thái, khách |
+| **Báo cáo** (`REPORT`) | Đối soát tài chính, doanh thu, lợi nhuận |
+| **Sổ công nợ** (`CUSTOMERS`) | Danh bạ khách hàng kèm tổng nợ từng người |
 
-1. **Clone repository về máy:**
-   ```bash
-   git clone <URL_CỦA_REPOSITORY>
-   cd <THƯ_MỤC_DỰ_ÁN>
-   ```
+Cùng với đó:
 
-2. **Cài đặt dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Khởi chạy môi trường phát triển (Dev Server):**
-   ```bash
-   npm run dev
-   ```
-   Sau đó mở trình duyệt tại địa chỉ hiển thị trong terminal (mặc định: `http://localhost:3000`).
-
-4. **Build bản phát hành (Production Build):**
-   ```bash
-   npm run build
-   ```
+- **Tìm kiếm không dấu** — gõ `nguyen` ra `Nguyễn`, tìm theo mã đơn, tên khách, SĐT, địa chỉ hoặc tên món. Mã đơn được ưu tiên khớp trước.
+- **Sắp xếp lộ trình** — gom nhóm theo chung cư / tòa / tầng, đẩy tầng cao lên trước để shipper đi một vòng từ trên xuống, phạt việc quay lui.
+- **VietQR** — sinh mã QR chuyển khoản kèm số tiền và nội dung, cùng deep link mở app ngân hàng.
+- **In Bảng Kê Giao Hàng** — bảng tổng hợp cho shipper, tối ưu cho A4 và máy in bill qua `@media print`; kèm nút in trực tiếp và nút tải file PDF.
+- **Xuất CSV / Excel** — đúng chuẩn RFC 4180 (quote dấu phẩy, xuống dòng CRLF) để Excel mở không lỗi.
+- **Thông báo hẹn giờ** — nhắc trước 30 phút cho các đơn có giờ hẹn giao.
+- **Âm thanh phản hồi** — Web Audio API, có công tắc bật/tắt.
+- **Phân quyền theo vai trò** — Admin / Bếp / Shipper / Thu ngân, mỗi vai trò có màn hình và quyền thao tác riêng.
 
 ---
 
-## 🛠 Công nghệ sử dụng
+## 🚀 Cài đặt và chạy
 
-- **Frontend:** React 18, TypeScript, Vite
-- **UI & Styling:** Tailwind CSS, Lucide Icons, Canvas Confetti
-- **Xử lý âm thanh & phản hồi:** Web Audio API & Sound Notifications
-- **In ấn & Xuất file:** CSS Media Print quy chuẩn, html2canvas, jsPDF, CSV Exporter
+### Yêu cầu
+
+- **Node.js >= 22.12.0** (bắt buộc — xem `engines` trong `package.json`)
+- npm (đi kèm Node)
+- Không cần biến môi trường nào
+
+### Chạy
+
+```bash
+git clone https://github.com/kha997/Oder-checlist.git
+cd Oder-checlist
+npm install
+npm run dev
+```
+
+Mở `http://localhost:3000`.
+
+### Build bản phát hành
+
+```bash
+npm run build     # tsc --noEmit + vite build
+npm run preview   # chạy thử bản đã build
+```
+
+---
+
+## 🧪 Kiểm thử
+
+```bash
+npm run verify      # chạy toàn bộ cổng kiểm tra bên dưới, theo thứ tự
+```
+
+| Lệnh | Nội dung |
+| --- | --- |
+| `npm run typecheck` | `tsc --noEmit` với `strict` + `noUnusedLocals` / `noUnusedParameters` |
+| `npm test` | 51 unit test trên logic thuần (tìm kiếm, CSV, lộ trình, VietQR) |
+| `npm run test:rules` | 23 assertion trên `firestore.rules`, chạy thật với Firestore Emulator |
+| `npm run test:palette` | Kiểm tra CSS đã build không còn `oklch()` / `in oklab` và đối chiếu bảng màu với Tailwind |
+| `npm run build` | Build production, cảnh báo nếu chunk vượt 700 kB |
+
+`npm run test:rules` cần **Java 21+** (cho Firestore Emulator) và mạng ở lần chạy đầu — `npx` sẽ tải `firebase-tools` và file JAR của emulator. Không cần `firebase-tools` cài sẵn trong máy.
+
+CI trên GitHub Actions chạy đúng cổng này ở hai job: `verify` và `security-rules`.
+
+---
+
+## 🛠 Công nghệ
+
+| Lớp | Dùng gì |
+| --- | --- |
+| Ngôn ngữ | **TypeScript 7** (`tsgo`), `strict`, `verbatimModuleSyntax` |
+| UI | **React 19** (kèm `React.lazy` + `Suspense` để tách màn hình) |
+| Build | **Vite 8** trên nền **Rolldown** |
+| CSS | **Tailwind CSS v4** |
+| Icon | **lucide-react** |
+| Backend | **Firebase 13** — Firestore + Google Auth |
+| PWA | **vite-plugin-pwa** (Workbox, `autoUpdate`) |
+| In / xuất file | CSS Media Print, **html2canvas**, **jsPDF**, CSV tự viết |
+| Test | **Vitest 5** + script kiểm thử Firestore Rules tự viết |
+
+### Vài điểm kỹ thuật đáng lưu ý
+
+- **Không phụ thuộc `firebase-tools` trong `package.json`** — script gọi `npx --yes firebase-tools` để bộ kiểm thử rules không kéo thêm hàng trăm package vào dây chuyền build.
+- **Bộ kiểm thử Firestore Rules tự viết, không dùng `@firebase/rules-unit-testing`** — thư viện đó yêu cầu `firebase ^12` trong khi dự án dùng 13. Thay vào đó script tự ký JWT unsigned gọi thẳng REST API của emulator.
+- **Không dùng ESLint** — `typescript-eslint@8` yêu cầu `typescript <6.1.0`, dự án đang ở TypeScript 7. Xem phần "Known gaps".
+
+---
+
+## 📁 Cấu trúc thư mục
+
+```
+src/
+  components/     34 component, gồm 8 màn hình chính
+  context/        AppContext — toàn bộ state, phân quyền, đồng bộ Firestore
+  firebase/       Khởi tạo Firebase, tầng truy cập Firestore
+  hooks/          Custom hook
+  types/          Kiểu dữ liệu + ROLE_CONFIGS
+  utils/          Logic thuần: searchHelper, csvExport, routeOptimizer, vietqr,
+                  pdfExport, storage, notificationScheduler
+    __tests__/    Unit test
+scripts/          verify-firestore-rules.mjs, oklch-to-srgb.mjs, verify-oklch-palette.mjs
+```
+
+---
+
+## ⚠️ Known gaps
+
+Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng**, không phải phỏng đoán. Đừng bỏ qua mục này nếu bạn định dùng app cho dữ liệu thật.
+
+### Bảo mật
+
+- **Phân quyền chỉ nằm ở phía client.** Vai trò và các cờ `canDeleteOrders`, `canConfirmPayment`… nằm trong `ROLE_CONFIGS` và được kiểm tra trong React. Một người gọi thẳng API Firestore có thể bỏ qua toàn bộ. Ai đã đăng nhập Google thì đọc và ghi được dữ liệu — `firestore.rules` chỉ chặn người chưa xác thực.
+- **Chưa có liên kết giữa `users` và `auth.uid`.** Rules không biết tài khoản Google nào ứng với nhân viên nào, nên không thể phân quyền theo vai trò ở tầng dữ liệu. Đây là việc cần làm trước khi dùng nhiều người thật.
+- **Email admin hardcode trong `firestore.rules`.** Hiện chỉ có một email được quyền xóa đơn ở tầng dữ liệu.
+
+### Chức năng dở dang
+
+- **`ExportOrderReportModal` nhận prop `title` nhưng bỏ qua.** Tiêu đề trong bản in lấy từ `docType`, còn `ReportScreen` vẫn giữ state `exportModalTitle` không bao giờ hiển thị. Nút xuất HTML đã bị gỡ, nên `downloadHtmlReport()` còn lại nhưng không ai gọi.
+- **`RouteMapView` tính `dueStatus` rồi không dùng.** Trông như một tính năng xếp lịch còn làm dở.
+
+### Toàn vẹn dữ liệu
+
+- **`saveToStorage` nuốt lỗi `QuotaExceededError`.** `localStorage` đầy thì thao tác lưu thất bại trong im lặng — người dùng tưởng đã lưu nhưng dữ liệu đã mất.
+- **Ảnh POD có thể vượt giới hạn 1 MB / document của Firestore.** Ảnh được chụp ở độ phân giải gốc của camera rồi nén JPEG, không giới hạn kích thước trước khi ghi.
+- **`bun.lock` đã lệch khỏi `package-lock.json`.** Không còn dùng bun; file lock cũ vẫn nằm trong repo và có thể gây nhầm lẫn.
+
+### Dây chuyền code
+
+- **Chưa có ESLint.** Bị chặn bởi xung đột phiên bản TypeScript ở trên.
+- **`firebase-applet-config.json` được commit kèm `projectId`, `apiKey`, `oAuthClientId`.** Với Firebase, những giá trị này được thiết kế để công khai — bảo mật phải đến từ `firestore.rules` và Authorized Domains. Nhưng nếu bạn tự triển khai, hãy đổi sang project của mình và giới hạn Authorized Domains.
+
+---
+
+## 📄 Giấy phép
+
+[MIT](LICENSE) © 2026 kha997

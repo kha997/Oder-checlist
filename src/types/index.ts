@@ -432,7 +432,6 @@ export interface StaffUser {
   role: UserRole;
   email?: string;
   phone?: string;
-  pin?: string;
   active: boolean;
   avatar?: string;
   createdAt: string;
