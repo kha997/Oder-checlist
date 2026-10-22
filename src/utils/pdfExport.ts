@@ -1,9 +1,10 @@
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
-
 /**
  * Exports an HTML element to a downloadable PDF file using html2canvas and jsPDF.
  * Supports multi-page splitting for long reports.
+ *
+ * html2canvas + jsPDF are ~450 kB together and are only ever needed after the
+ * user taps "Export", so they are pulled in with a dynamic import. That keeps
+ * them out of the first-paint bundle; callers already `await` this function.
  */
 export async function exportElementToPdf(
   element: HTMLElement,
@@ -11,6 +12,13 @@ export async function exportElementToPdf(
   onProgress?: (step: string) => void
 ): Promise<void> {
   try {
+    if (onProgress) onProgress('Đang tải công cụ xuất PDF...');
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ]);
+
     if (onProgress) onProgress('Đang chuẩn bị trang in...');
 
     // Small delay to ensure all images and fonts are rendered

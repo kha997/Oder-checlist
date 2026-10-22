@@ -16,8 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rules": "npx --yes firebase-tools emulators:exec --only firestore --project demo-oder-checklist \"node scripts/verify-firestore-rules.mjs\"",
+    "test:palette": "node scripts/verify-oklch-palette.mjs",
     "icons": "node scripts/generate-icons.js",
-    "verify": "npm run typecheck && npm run test && npm run test:rules && npm run build"
+    "verify": "npm run typecheck && npm run test && npm run test:rules && npm run build && npm run test:palette"
   },
   "dependencies": {
     "firebase": "^13.0.0",

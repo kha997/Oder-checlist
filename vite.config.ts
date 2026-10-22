@@ -3,12 +3,16 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { oklchToSrgbPlugin } from './scripts/oklch-to-srgb.mjs';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      // Tailwind v4 emits `oklch()` colours, which html2canvas cannot parse —
+      // it threw on every "Tải File PDF" export. Rewritten to sRGB at build time.
+      oklchToSrgbPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
@@ -56,6 +60,47 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
+      },
+    },
+    build: {
+      chunkSizeWarningLimit: 700,
+      rolldownOptions: {
+        output: {
+          // Vite 8 uses Rolldown, whose object-form `manualChunks` was removed.
+          // Groups are matched highest-priority-first against module ids.
+          codeSplitting: {
+            groups: [
+              {
+                // Icons: lucide-react pulls one icon per import, shared by 35 files.
+                name: 'icons',
+                test: /node_modules[\\/]lucide-react[\\/]/,
+                priority: 30,
+              },
+              {
+                // Firebase auth + Firestore, required at boot for the sync layer.
+                name: 'firebase',
+                test: /node_modules[\\/](@?firebase)[\\/]/,
+                priority: 25,
+              },
+              {
+                // React runtime — stable, cached across releases.
+                name: 'react-vendor',
+                test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+                priority: 20,
+              },
+              {
+                // Everything else from node_modules. jspdf + html2canvas (~550 kB)
+                // are deliberately excluded: they are only reachable through the
+                // dynamic import() inside pdfExport.ts (tapped "Export"), and a
+                // catch-all group would hoist them into a statically-imported
+                // chunk, defeating the deferral.
+                name: 'vendor',
+                test: /node_modules[\\/](?!jspdf[\\/]|html2canvas[\\/])/,
+                priority: 10,
+              },
+            ],
+          },
+        },
       },
     },
     server: {

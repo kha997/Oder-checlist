@@ -3,21 +3,54 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { HomeScreen } from './components/HomeScreen';
-import { CreateOrderScreen } from './components/CreateOrderScreen';
-import { DeliveryModeScreen } from './components/DeliveryModeScreen';
-import { UnpaidScreen } from './components/UnpaidScreen';
-import { InventoryScreen } from './components/InventoryScreen';
-import { ReportScreen } from './components/ReportScreen';
-import { OrderHistoryScreen } from './components/OrderHistoryScreen';
-import { CustomersScreen } from './components/CustomersScreen';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { NotificationToast } from './components/NotificationToast';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
+
+// Screens are large and mutually exclusive — only one is mounted at a time, so
+// each is loaded on demand. Combined with the vendor chunking in vite.config.ts
+// this keeps the first-paint payload to the shell + HomeScreen instead of the
+// whole application (~2.1 MB pre-split).
+const lazyScreen = (
+  load: () => Promise<{ default: React.ComponentType }>
+): React.LazyExoticComponent<React.ComponentType> => React.lazy(load);
+
+const HomeScreen = lazyScreen(() =>
+  import('./components/HomeScreen').then((m) => ({ default: m.HomeScreen }))
+);
+const CreateOrderScreen = lazyScreen(() =>
+  import('./components/CreateOrderScreen').then((m) => ({ default: m.CreateOrderScreen }))
+);
+const DeliveryModeScreen = lazyScreen(() =>
+  import('./components/DeliveryModeScreen').then((m) => ({ default: m.DeliveryModeScreen }))
+);
+const UnpaidScreen = lazyScreen(() =>
+  import('./components/UnpaidScreen').then((m) => ({ default: m.UnpaidScreen }))
+);
+const InventoryScreen = lazyScreen(() =>
+  import('./components/InventoryScreen').then((m) => ({ default: m.InventoryScreen }))
+);
+const ReportScreen = lazyScreen(() =>
+  import('./components/ReportScreen').then((m) => ({ default: m.ReportScreen }))
+);
+const OrderHistoryScreen = lazyScreen(() =>
+  import('./components/OrderHistoryScreen').then((m) => ({ default: m.OrderHistoryScreen }))
+);
+const CustomersScreen = lazyScreen(() =>
+  import('./components/CustomersScreen').then((m) => ({ default: m.CustomersScreen }))
+);
+
+/** Shown while a screen chunk is being fetched/compiled. */
+const ScreenFallback: React.FC = () => (
+  <div className="flex flex-col items-center justify-center py-16 gap-3" role="status">
+    <div className="w-8 h-8 rounded-full border-[3px] border-emerald-200 border-t-emerald-600 animate-spin" />
+    <span className="text-xs font-semibold text-slate-500">Đang tải màn hình...</span>
+  </div>
+);
 
 const MainContent: React.FC = () => {
   const { currentScreen, setCurrentScreen, canAccessScreen, activeStaff, roleConfig } = useApp();
@@ -54,14 +87,16 @@ const MainContent: React.FC = () => {
 
   return (
     <main className="max-w-2xl mx-auto px-3.5 sm:px-4 pt-3.5 pb-20">
-      {currentScreen === 'HOME' && <HomeScreen />}
-      {currentScreen === 'CREATE_ORDER' && <CreateOrderScreen />}
-      {currentScreen === 'DELIVERY' && <DeliveryModeScreen />}
-      {currentScreen === 'UNPAID' && <UnpaidScreen />}
-      {currentScreen === 'INVENTORY' && <InventoryScreen />}
-      {currentScreen === 'REPORT' && <ReportScreen />}
-      {currentScreen === 'ORDER_HISTORY' && <OrderHistoryScreen />}
-      {currentScreen === 'CUSTOMERS' && <CustomersScreen />}
+      <Suspense fallback={<ScreenFallback />}>
+        {currentScreen === 'HOME' && <HomeScreen />}
+        {currentScreen === 'CREATE_ORDER' && <CreateOrderScreen />}
+        {currentScreen === 'DELIVERY' && <DeliveryModeScreen />}
+        {currentScreen === 'UNPAID' && <UnpaidScreen />}
+        {currentScreen === 'INVENTORY' && <InventoryScreen />}
+        {currentScreen === 'REPORT' && <ReportScreen />}
+        {currentScreen === 'ORDER_HISTORY' && <OrderHistoryScreen />}
+        {currentScreen === 'CUSTOMERS' && <CustomersScreen />}
+      </Suspense>
     </main>
   );
 };
