@@ -9,27 +9,74 @@ rules_version = '2';
 //    user with a VERIFIED email (`email_verified == true`), so an
 //    unverified throwaway account cannot touch any data.
 //
-//  * Authorization: deliberately FLAT. Any verified user can read and write
-//    orders, customers, products, condos, stock logs and users.
+//  * Authorization: ROLE-BASED, resolved from `staffRoles/{auth.uid}`.
+//    The document holds `{uid, email, displayName, role, createdAt}` where
+//    `role` is one of ADMIN / KITCHEN / SHIPPER / CASHIER. A signed-in user
+//    with NO role document has NO access to any collection — previously any
+//    verified Google account could read and write everything, including the
+//    store's bank details.
 //
-//  * LIMITATION — the per-role screen restrictions (ADMIN / KITCHEN /
-//    SHIPPER / CASHIER) shown in the UI are enforced ONLY in the client
-//    (AppContext.canAccessScreen + ROLE_CONFIGS). They are NOT enforced
-//    here, because the staff list in `users` is not linked to Firebase Auth
-//    UIDs (staff are added manually by name/phone/email, they do not sign
-//    in). Consequence: anyone who signs in with a verified Google account
-//    can write directly against the Firestore API, bypassing UI roles.
-//    Do not treat these rules as a role-based authorization boundary.
+//  * Revoking a role = deleting the `staffRoles/{uid}` document. There is no
+//    `active` flag on purpose: reading a missing field inside a rule raises
+//    an error, and an error in a rule expression denies the request. Keeping
+//    the document shape minimal keeps the rules fail-closed and simple.
 //
-//  * Deletes are admin-only. `admins/{uid}` is the intended mechanism; the
-//    bootstrap email below exists only to create the very first admin doc —
-//    after that, manage admins through the `admins` collection.
+//  * Bootstrap: the store owner (`khafibo@gmail.com`) and any uid present in
+//    `admins/{uid}` are ADMIN without needing a role document, so the owner
+//    can never lock themselves out of their own shop.
+//
+//  * Onboarding: a user without a role writes their own `staffRequests/{uid}`
+//    document (uid, email, displayName, requestedAt). That document MUST NOT
+//    contain a `role` field — the rules reject it — otherwise a user could
+//    promote themselves. An ADMIN approves the request, which creates the
+//    `staffRoles/{uid}` document.
+//
+//  * COST NOTE — see the bottom of this block for read-cost accounting.
+//
+//  MULTI-TENANCY (T1) — see docs/MULTI-TENANT-SPEC.md for the full spec.
+//  ---------------------------------------------------------------------
+//  * The app is now multi-tenant: anyone with an account may own ONE shop.
+//    Every shop-scoped document carries a `shopId` field, and authorization
+//    for it resolves from `shops/{shopId}/members/{auth.uid}`
+//    ({role, status}) — NOT from `staffRoles` (legacy, single-tenant) and
+//    NEVER from `accounts/{uid}`, which is only the client's navigation
+//    index.
+//  * `roleInShop()` is fail-closed: no membership doc, no access. Revoking a
+//    member = deleting `shops/{shopId}/members/{uid}`; a `pending` member may
+//    read nothing except their own seat (a shop admin approves them).
+//  * LIST is the load-bearing rule: `resource.data.shopId` is read directly,
+//    so a query that does not constrain `shopId` ERRORS and is denied. A
+//    member can only ever prove a query for their own shop — cross-shop
+//    listing is structurally impossible, not merely filtered.
+//  * 1 SHOP PER ACCOUNT is enforced by `accounts/{uid}.shops` (never shrunk)
+//    as the precondition on `create /shops/{shopId}`.
+//  * The bootstrap owner (`khafibo@gmail.com`) is a SUPER-ADMIN: every
+//    `canReadShop`/`isShopAdmin` falls back to them, and only they may
+//    attach a `shopId` to a pre-tenancy document (that is the P2 backfill).
+//  * LEGACY COMPATIBILITY, time-boxed: `staffRoles`/`admins` still grant
+//    read/write of documents that have NO `shopId` (single-tenant era). All
+//    list access is already shop-scoped, so the legacy branch can no longer
+//    enumerate another shop's data. P5 deletes this branch and the legacy
+//    collections together.
+//
+//  * Cost note: role resolution costs one dependent-document read per request
+//    (Cloud Firestore charges one read per distinct document even when the
+//    rules reference it several times). A shop-scoped request touches at most
+//    one dependent document — `shops/{shopId}/members/{uid}` — plus, for shop
+//    creation only, the caller's own `accounts/{uid}`. Legacy requests still
+//    touch `staffRoles/{uid}` (and `admins/{uid}` as a fallback).
 //
 //  * These rules intentionally do NOT use `hasOnly(...)` on collections.
 //    The app attaches extra optional fields to orders (priority, notes,
 //    items, recurring schedule, proof-of-delivery photo, ...); a whitelist
 //    would reject legitimate writes. Validation below is a shape/size floor,
 //    not a schema lock.
+//
+//  * LIMITATION — the rules gate COLLECTIONS, not individual fields. The app
+//    is local-first and syncs whole documents ("Đồng bộ lên cloud"), so a
+//    rule that restricted, say, `totalAmount` to ADMIN only would break the
+//    bulk write. Field-level authorization requires per-action writes first;
+//    see docs/RBAC.md §7.
 // ============================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -55,12 +102,169 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    // Bootstrap admin by email; long-term admin management via `admins/{uid}`.
+    // --------------------------------------------------- role resolution
+    function staffRoleDoc() {
+      return /databases/$(database)/documents/staffRoles/$(request.auth.uid);
+    }
+
+    // The caller's role, or null when they have none.
+    function roleOf() {
+      return exists(staffRoleDoc()) ? get(staffRoleDoc()).data.role : null;
+    }
+
+    // Any recognised, assigned role.
+    function hasAnyRole() {
+      return isVerifiedUser() && roleOf() in ['ADMIN', 'KITCHEN', 'SHIPPER', 'CASHIER'];
+    }
+
+    function hasRole(role) {
+      return isVerifiedUser() && roleOf() == role;
+    }
+
+    // The store owner, by email, without needing a role document.
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'khafibo@gmail.com';
+    }
+
+    // The legacy `admins/{uid}` collection, kept working for shops that
+    // already use it.
+    function isLegacyAdmin() {
+      return isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // May read the shop's data: either they hold a role, or they are an admin
+    // by bootstrap email or by the legacy admins collection.
+    //
+    // The `||` chain short-circuits, so at most two dependent documents are
+    // read per evaluation: `staffRoles/{uid}` and — only when the cheaper
+    // checks already failed — `admins/{uid}`.
+    function isAuthorized() {
+      return hasAnyRole() || isBootstrapAdmin() || isLegacyAdmin();
+    }
+
+    // Admin, by bootstrap email, by role document, or by the legacy
+    // `admins/{uid}` collection.
     function isAdmin() {
-      return isVerifiedUser() && (
-        request.auth.token.email == 'khafibo@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isBootstrapAdmin() || roleOf() == 'ADMIN' || isLegacyAdmin();
+    }
+
+    // Writes that ordinary roles are allowed to perform.
+    function canWriteOrders() {
+      return isAuthorized();
+    }
+
+    function canWriteCustomers() {
+      return isAdmin() || hasRole('CASHIER');
+    }
+
+    function canWriteCatalogue() {
+      return isAdmin();
+    }
+
+    // =====================================================================
+    // MULTI-TENANCY helpers (T1) — see docs/MULTI-TENANT-SPEC.md
+    //
+    // Every shop-scoped document carries a `shopId` field. Authorization for
+    // those documents is resolved from `shops/{shopId}/members/{auth.uid}`
+    // and NEVER from `staffRoles` (legacy, removed in P5) or from
+    // `accounts` (a client-maintained navigation index, never trusted).
+    //
+    // Read cost: a shop-scoped request touches at most ONE dependent document
+    // (`members/{uid}` of that shop) plus the caller's own `accounts/{uid}`
+    // only when creating a shop — same cost class as the legacy rules.
+    // =====================================================================
+
+    function validShopId(id) {
+      return id is string && id.size() >= 4 && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // `resource.data` is NULL when the operation targets a document that does
+    // not exist yet (create) or no longer exists (get/delete), so every
+    // helper below must tolerate null input — an error inside a rule denies.
+    function hasShopId(data) {
+      return data != null && data.keys().hasAny(['shopId']) && validShopId(data.shopId);
+    }
+
+    // `resource` itself is NULL when the document does not exist (create, or
+    // get/delete of a missing doc) — reading `resource.data` in that case is
+    // a rule ERROR the moment the argument is evaluated. Every document read
+    // below therefore goes through this guard; `&&` keeps the argument from
+    // being evaluated when there is no resource.
+    function resourceHasShopId() {
+      return resource != null && hasShopId(resource.data);
+    }
+
+    function shopDoc(shopId) {
+      return /databases/$(database)/documents/shops/$(shopId);
+    }
+
+    function memberDoc(shopId, uid) {
+      return /databases/$(database)/documents/shops/$(shopId)/members/$(uid);
+    }
+
+    function accountDoc(uid) {
+      return /databases/$(database)/documents/accounts/$(uid);
+    }
+
+    function inviteDoc(code) {
+      return /databases/$(database)/documents/inviteCodes/$(code);
+    }
+
+    // exists() guards every get() below, so a missing member document yields
+    // false instead of a rule error (an error denies, but reads fail closed
+    // quietly and cheaply).
+    function isActiveMemberOf(shopId) {
+      return isVerifiedUser() && validShopId(shopId)
+        && exists(memberDoc(shopId, request.auth.uid))
+        && get(memberDoc(shopId, request.auth.uid)).data.status == 'active';
+    }
+
+    function roleInShop(shopId) {
+      return isActiveMemberOf(shopId)
+        && get(memberDoc(shopId, request.auth.uid)).data.role in ['ADMIN', 'CASHIER', 'KITCHEN', 'SHIPPER'];
+    }
+
+    function hasRoleInShop(shopId, role) {
+      return isActiveMemberOf(shopId)
+        && get(memberDoc(shopId, request.auth.uid)).data.role == role;
+    }
+
+    function isPendingMemberOf(shopId) {
+      return isVerifiedUser() && validShopId(shopId)
+        && exists(memberDoc(shopId, request.auth.uid))
+        && get(memberDoc(shopId, request.auth.uid)).data.status == 'pending';
+    }
+
+    // Read a shop's data: any active member, or the super-admin. The
+    // bootstrap branch does not touch Firestore, so a super-admin can list
+    // without a `where('shopId')` filter while ordinary members cannot.
+    function canReadShop(shopId) {
+      return roleInShop(shopId) || isBootstrapAdmin();
+    }
+
+    function isShopAdmin(shopId) {
+      return hasRoleInShop(shopId, 'ADMIN') || isBootstrapAdmin();
+    }
+
+    // Mirrors of the Phase 1 write matrix, scoped to a shop.
+    function canWriteOrdersIn(shopId) {
+      return canReadShop(shopId);
+    }
+
+    function canWriteCustomersIn(shopId) {
+      return isShopAdmin(shopId) || hasRoleInShop(shopId, 'CASHIER');
+    }
+
+    function canWriteCatalogueIn(shopId) {
+      return isShopAdmin(shopId);
+    }
+
+    // An invite code is a bearer token: knowing it is what lets a stranger
+    // create a PENDING member doc. It must exist AND point at this shop.
+    function hasInviteFor(shopId, code) {
+      return code is string && code.size() >= 6 && code.size() <= 32
+        && exists(inviteDoc(code))
+        && get(inviteDoc(code)).data.shopId == shopId;
     }
 
     // ------------------------------------------------------------- validators
@@ -137,81 +341,423 @@ service cloud.firestore {
         && data.email is string && data.email.size() <= 256;
     }
 
+    // A role assignment. The document id IS the Firebase Auth uid, and the
+    // `uid` field must agree with it.
+    function isValidStaffRole(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() <= 128
+        && data.role in ['ADMIN', 'KITCHEN', 'SHIPPER', 'CASHIER']
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    // A role request. `role` is rejected: a request must never be able to
+    // grant itself a permission.
+    function isValidStaffRequest(data) {
+      return !data.keys().hasAny(['role'])
+        && data.keys().hasAll(['uid', 'email', 'displayName', 'requestedAt'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() <= 128
+        && data.requestedAt is string && data.requestedAt.size() <= 64;
+    }
+
+    // ------------------------------------------------------------ T1: shops
+    // A shop is immutable in its identity fields after creation: `shopId` and
+    // `ownerUid` are frozen, `status` is the archive flag (soft delete).
+    function isValidShop(data) {
+      return data.keys().hasAll(['shopId', 'name', 'ownerUid', 'ownerEmail', 'inviteCode', 'status', 'createdAt'])
+        && validShopId(data.shopId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.ownerUid is string && data.ownerUid.size() <= 128
+        && data.ownerEmail is string && data.ownerEmail.size() <= 256
+        && data.inviteCode is string && data.inviteCode.size() >= 6 && data.inviteCode.size() <= 32
+        && data.inviteCode.matches('^[A-Z0-9]+$')
+        && data.status in ['active', 'archived']
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll(['uid', 'shopId', 'email', 'displayName', 'role', 'status', 'createdAt'])
+        && data.uid is string && data.uid.size() <= 128
+        && validShopId(data.shopId)
+        && data.email is string && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() <= 128
+        && data.role in ['ADMIN', 'CASHIER', 'KITCHEN', 'SHIPPER']
+        && data.status in ['active', 'pending', 'revoked']
+        && data.createdAt is string && data.createdAt.size() <= 64
+        // A pending join must always name the invite that authorised it.
+        && (data.status != 'pending' || (data.keys().hasAny(['inviteCode']) && data.inviteCode is string));
+    }
+
+    // `accounts/{uid}` is the client's own navigation index. It is validated
+    // for shape only — no rule ever grants rights by reading it, EXCEPT the
+    // 1-shop-per-account guard on shop creation (whose list is never shrunk,
+    // see the update rule below).
+    function isValidAccount(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'shops', 'defaultShopId'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() <= 128
+        && data.shops is list && data.shops.size() <= 10
+        && data.defaultShopId is string && data.defaultShopId.size() <= 64;
+    }
+
+    function isValidInvite(data) {
+      return data.keys().hasAll(['code', 'shopId', 'createdBy', 'createdAt'])
+        && data.code is string && data.code.size() >= 6 && data.code.size() <= 32
+        && data.code.matches('^[A-Z0-9]+$')
+        && validShopId(data.shopId)
+        && data.createdBy is string && data.createdBy.size() <= 128
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
     // --------------------------------------------------------------- admins
     match /admins/{adminId} {
-      allow get: if isVerifiedUser();
+      allow get: if isAuthorized();
       allow list: if isAdmin();
       allow create, update: if isAdmin() && isValidAdmin(incoming());
       allow delete: if isAdmin();
     }
 
+    // -------------------------------------------------------------- accounts
+    // The caller's own navigation index (which shops they belong to). Readable
+    // and writable only by its owner, never listed, never deleted — the
+    // immutability of `shops` (below) is what enforces 1-shop-per-account.
+    match /accounts/{uid} {
+      // The bootstrap super-admin may also READ somebody else's index: the
+      // P3 migration checks it before provisioning accounts for the staff it
+      // moves from `staffRoles`. Reading an index grants no rights (no rule
+      // anywhere trusts it for authorization — see the note above).
+      allow get: if isVerifiedUser() && (uid == request.auth.uid || isBootstrapAdmin());
+      allow list: if false;
+      // Creation by the owner, or by the super-admin on behalf of a migrated
+      // staff member who has never had an index. Ordinary users can still
+      // only ever create their OWN.
+      allow create: if isVerifiedUser() && uid == incoming().uid
+        && isValidAccount(incoming())
+        && (uid == request.auth.uid || isBootstrapAdmin());
+      allow update: if isVerifiedUser() && uid == incoming().uid
+        && resource != null && isValidAccount(incoming())
+        && (
+          // The shop list may grow (a just-created shop is appended) but never
+          // shrink, so a client cannot reset its own count to create a 2nd shop.
+          (uid == request.auth.uid
+            && incoming().shops.size() >= resource.data.shops.size())
+          // The super-admin may attach the migrated shop to a staff member's
+          // index regardless of size — migration is an admin operation.
+          || isBootstrapAdmin()
+        );
+      allow delete: if false;
+    }
+
+    // ----------------------------------------------------------------- shops
+    match /shops/{shopId} {
+      allow get: if isVerifiedUser() && validShopId(shopId)
+        && (canReadShop(shopId) || isPendingMemberOf(shopId));
+      allow list: if isBootstrapAdmin()
+        || (isVerifiedUser() && resource.data.ownerUid == request.auth.uid);
+      // Creation is guarded by the caller's `accounts` document having an
+      // empty shop list: one shop per account, enforced server-side.
+      allow create: if isVerifiedUser() && validShopId(shopId)
+        && isValidShop(incoming()) && incoming().shopId == shopId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().ownerEmail == request.auth.token.email
+        && exists(accountDoc(request.auth.uid))
+        && get(accountDoc(request.auth.uid)).data.shops.size() == 0;
+      allow update: if validShopId(shopId) && isShopAdmin(shopId)
+        && resource != null
+        && isValidShop(incoming())
+        && incoming().shopId == shopId
+        && incoming().ownerUid == resource.data.ownerUid
+        && incoming().ownerEmail == resource.data.ownerEmail;
+      // No hard delete: the owner archives (`status = 'archived'`) instead.
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------- shop membership
+    // THE authorization primitive for multi-tenancy. Only a shop ADMIN may
+    // grant roles; a stranger may only create their OWN document, and only as
+    // a pending join backed by a valid invite code — never with an active
+    // status, never with someone else's uid.
+    match /shops/{shopId}/members/{uid} {
+      allow get: if isVerifiedUser() && validShopId(shopId)
+        && (uid == request.auth.uid || canReadShop(shopId) || isPendingMemberOf(shopId));
+      allow list: if validShopId(shopId) && canReadShop(shopId);
+      allow create: if isVerifiedUser() && validShopId(shopId)
+        && isValidMember(incoming())
+        && incoming().shopId == shopId && incoming().uid == uid
+        && (
+          // (a) a shop's owner creates their own ADMIN seat while creating
+          //     the shop (same batch), or joins a shop they already own.
+          ( uid == request.auth.uid
+            && incoming().status == 'active' && incoming().role == 'ADMIN'
+            && exists(shopDoc(shopId))
+            && get(shopDoc(shopId)).data.ownerUid == request.auth.uid )
+          // (b) a shop admin invites / approves somebody else.
+          || ( uid != request.auth.uid && isShopAdmin(shopId) )
+          // (c) a stranger self-joins as PENDING with a valid invite code.
+          || ( uid == request.auth.uid
+               && incoming().status == 'pending'
+               && hasInviteFor(shopId, incoming().inviteCode) )
+        );
+      allow update: if validShopId(shopId)
+        && isShopAdmin(shopId)
+        && isValidMember(incoming())
+        && incoming().uid == uid && incoming().shopId == shopId;
+      allow delete: if validShopId(shopId)
+        && (isShopAdmin(shopId) || uid == request.auth.uid);
+    }
+
+    // -------------------------------------------------------- inviteCodes
+    // docId IS the code, so `get` by path is provable; listing requires a
+    // shop-scoped filter (or super-admin).
+    match /inviteCodes/{code} {
+      allow get: if isVerifiedUser() && code is string
+        && code.size() >= 6 && code.size() <= 32 && code.matches('^[A-Z0-9]+$');
+      allow list: if isBootstrapAdmin()
+        || (isVerifiedUser() && resource.data.shopId is string
+            && validShopId(resource.data.shopId) && isShopAdmin(resource.data.shopId));
+      allow create: if isVerifiedUser()
+        && isValidInvite(incoming()) && incoming().code == code
+        && isShopAdmin(incoming().shopId);
+      allow update: if resource != null && isShopAdmin(resource.data.shopId)
+        && incoming().code == code && incoming().shopId == resource.data.shopId;
+      allow delete: if resource != null && isShopAdmin(resource.data.shopId);
+    }
+
+    // ------------------------------------------------------------ staffRoles
+    // The role assignments themselves. Readable by their owner and by admins;
+    // writable only by admins.
+    match /staffRoles/{uid} {
+      allow get: if isVerifiedUser() && (uid == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && isValidStaffRole(incoming()) && uid == incoming().uid;
+      allow delete: if isAdmin();
+    }
+
+    // --------------------------------------------------------- staffRequests
+    // A user asks for access; an admin approves it by creating staffRoles.
+    match /staffRequests/{uid} {
+      allow get: if isVerifiedUser() && (uid == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser() && uid == request.auth.uid && uid == incoming().uid && isValidStaffRequest(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isVerifiedUser() && uid == request.auth.uid);
+    }
+
     // --------------------------------------------------------------- orders
     match /orders/{orderId} {
-      allow get: if isVerifiedUser() && isValidId(orderId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming());
-      allow update: if isVerifiedUser() && isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming());
-      allow delete: if isAdmin() && isValidId(orderId);
+      allow get: if isValidId(orderId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      allow create: if isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming())
+        && ((canWriteOrders() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteOrdersIn(incoming().shopId)));
+      allow update: if isValidId(orderId) && orderId == incoming().id && isValidOrder(incoming())
+        && ((canWriteOrders() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteOrdersIn(incoming().shopId))
+            // Adoption clause: ONLY the super-admin may attach a `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill. A normal shop
+            // admin can never claim an un-namespaced document.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(orderId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // ----------------------------------------------------------- customers
     match /customers/{customerId} {
-      allow get: if isVerifiedUser() && isValidId(customerId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming());
-      allow update: if isVerifiedUser() && isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming());
-      allow delete: if isAdmin() && isValidId(customerId);
+      allow get: if isValidId(customerId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      allow create: if isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming())
+        && ((canWriteCustomers() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCustomersIn(incoming().shopId)));
+      allow update: if isValidId(customerId) && customerId == incoming().id && isValidCustomer(incoming())
+        && ((canWriteCustomers() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCustomersIn(incoming().shopId))
+            // Adoption clause: ONLY the super-admin may attach a `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill. A normal shop
+            // admin can never claim an un-namespaced document.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(customerId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // ------------------------------------------------------------- products
     match /products/{productId} {
-      allow get: if isVerifiedUser() && isValidId(productId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(productId) && productId == incoming().id && isValidProduct(incoming());
-      allow update: if isVerifiedUser() && isValidId(productId) && productId == incoming().id && isValidProduct(incoming());
-      allow delete: if isAdmin() && isValidId(productId);
+      allow get: if isValidId(productId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      allow create: if isValidId(productId) && productId == incoming().id && isValidProduct(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCatalogueIn(incoming().shopId)));
+      allow update: if isValidId(productId) && productId == incoming().id && isValidProduct(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCatalogueIn(incoming().shopId))
+            // Adoption clause: ONLY the super-admin may attach a `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill. A normal shop
+            // admin can never claim an un-namespaced document.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(productId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // --------------------------------------------------------------- condos
     match /condos/{condoId} {
-      allow get: if isVerifiedUser() && isValidId(condoId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming());
-      allow update: if isVerifiedUser() && isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming());
-      allow delete: if isAdmin() && isValidId(condoId);
+      allow get: if isValidId(condoId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      allow create: if isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCatalogueIn(incoming().shopId)));
+      allow update: if isValidId(condoId) && condoId == incoming().id && isValidCondo(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCatalogueIn(incoming().shopId))
+            // Adoption clause: ONLY the super-admin may attach a `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill. A normal shop
+            // admin can never claim an un-namespaced document.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(condoId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // ----------------------------------------------------------- stockLogs
     match /stockLogs/{logId} {
-      allow get: if isVerifiedUser() && isValidId(logId);
-      allow list: if isVerifiedUser();
-      allow create: if isVerifiedUser() && isValidId(logId) && logId == incoming().id && isValidStockLog(incoming());
-      allow update: if isVerifiedUser() && isValidId(logId) && logId == incoming().id && isValidStockLog(incoming());
-      allow delete: if isAdmin() && isValidId(logId);
+      allow get: if isValidId(logId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      allow create: if isValidId(logId) && logId == incoming().id && isValidStockLog(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCatalogueIn(incoming().shopId)));
+      allow update: if isValidId(logId) && logId == incoming().id && isValidStockLog(incoming())
+        && ((canWriteCatalogue() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCatalogueIn(incoming().shopId))
+            // Adoption clause: ONLY the super-admin may attach a `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill. A normal shop
+            // admin can never claim an un-namespaced document.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(logId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // --------------------------------------------------------------- users
+    // Staff profiles (the local roster). Readable by every role, writable by
+    // admins only — a non-admin must not be able to edit the roster that
+    // drives the UI's role checks.
     match /users/{userId} {
-      allow get: if isVerifiedUser() && isValidId(userId);
-      allow list: if isVerifiedUser();
-      allow create, update: if isVerifiedUser() && isValidId(userId) && userId == incoming().id && isValidUserProfile(incoming());
-      allow delete: if isAdmin() && isValidId(userId);
+      allow get: if isValidId(userId) && (
+        (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId)));
+      // LIST is fail-closed by construction: `resource.data.shopId` is read
+      // directly, which ERRORS unless the query constrains `shopId` to a real
+      // value - an unfiltered list can never be allowed, and a member can only
+      // ever prove access to their own shop. Legacy single-tenant clients
+      // therefore break (never leak) at the P4 cutover.
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      // create() only consults `incoming()` — `resource` is NULL for a create.
+      allow create: if isValidId(userId) && userId == incoming().id && isValidUserProfile(incoming())
+        && ((isAdmin() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCatalogueIn(incoming().shopId)));
+      // update() freezes the document into the shop it was created in.
+      allow update: if isValidId(userId) && userId == incoming().id && isValidUserProfile(incoming())
+        && resource != null
+        && ((isAdmin() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCatalogueIn(incoming().shopId))
+            // Adoption: ONLY the super-admin may attach `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(userId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // ------------------------------------------------------------- settings
     // Bank account details are business configuration: readable by the app
     // (needed to render VietQR), writable by admins only.
     match /settings/{settingId} {
-      allow get, list: if isVerifiedUser();
-      allow create, update: if isAdmin() && isValidId(settingId) && isValidSetting(incoming());
-      allow delete: if isAdmin();
+      allow get: if (isAuthorized() && !resourceHasShopId())
+        || (resourceHasShopId() && canReadShop(resource.data.shopId));
+      allow list: if resource != null && validShopId(resource.data.shopId)
+        && canReadShop(resource.data.shopId);
+      // create() only consults `incoming()` — `resource` is NULL for a create.
+      allow create: if isValidId(settingId) && isValidSetting(incoming())
+        && ((isAdmin() && !hasShopId(incoming()))
+            || (hasShopId(incoming()) && canWriteCatalogueIn(incoming().shopId)));
+      // update() freezes the document into the shop it was created in.
+      allow update: if isValidId(settingId) && isValidSetting(incoming())
+        && resource != null
+        && ((isAdmin() && !hasShopId(incoming()) && !resourceHasShopId())
+            || (hasShopId(incoming()) && resourceHasShopId()
+                && incoming().shopId == resource.data.shopId
+                && canWriteCatalogueIn(incoming().shopId))
+            // Adoption: ONLY the super-admin may attach `shopId` to a
+            // pre-tenancy document — that IS the P2 backfill.
+            || (hasShopId(incoming()) && !resourceHasShopId() && isBootstrapAdmin()));
+      allow delete: if isValidId(settingId) && (
+        (resourceHasShopId() && isShopAdmin(resource.data.shopId))
+        || (isAdmin() && !resourceHasShopId()));
     }
 
     // ----------------------------------------------------------------- test
     // Health-check document written by src/firebase/config.ts on boot. It is
     // NOT a public scratchpad — anonymous read/write is no longer allowed.
     match /test/{docId} {
-      allow read, write: if isVerifiedUser();
+      allow read, write: if isAuthorized();
     }
   }
 }

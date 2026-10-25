@@ -63,7 +63,17 @@ export const DEFAULT_SCHEDULER_CONFIG: NotificationSchedulerConfig = {
   desktopNotification: true,
 };
 
-export interface Product {
+/**
+ * Every cloud document carries the id of the shop that owns it (T1
+ * multi-tenancy, see docs/MULTI-TENANT-SPEC.md).
+ *
+ * Optional because local-only data — which never leaves this device — has no
+ * shop yet: the Firestore layer stamps the active shop's id on write, and the
+ * P2 backfill stamps the pre-tenancy dataset from the owner's browser.
+ */
+export type ShopOwned = { shopId?: string };
+
+export interface Product extends ShopOwned {
   id: string;
   name: string;
   price: number; // Selling price in VND
@@ -75,7 +85,7 @@ export interface Product {
   unit: string; // e.g. Phần, Ly, Chai, Hộp, Kg
 }
 
-export interface Customer {
+export interface Customer extends ShopOwned {
   id: string;
   name: string;
   phone: string;
@@ -109,7 +119,7 @@ export interface CustomerDebtSummary {
   reminderCount?: number;
 }
 
-export interface CondoLocation {
+export interface CondoLocation extends ShopOwned {
   id: string;
   name: string; // e.g. "Vinhomes Grand Park"
   blocks: string[]; // e.g. ["A", "B", "S1", "S2", "S3", "S5"]
@@ -145,7 +155,7 @@ export interface OrderLocation {
   lng?: number; // Geolocation longitude
 }
 
-export interface Order {
+export interface Order extends ShopOwned {
   id: string; // e.g. "ORD-1001"
   createdAt: string; // ISO string
   customerName: string;
@@ -320,7 +330,7 @@ export const getOrderTagColor = (tagId: string): string => {
   return customColors[Math.abs(hash) % customColors.length];
 };
 
-export interface StockLog {
+export interface StockLog extends ShopOwned {
   id: string;
   productId: string;
   productName: string;
@@ -427,7 +437,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   },
 };
 
-export interface StaffUser {
+export interface StaffUser extends ShopOwned {
   id: string;
   name: string;
   role: UserRole;
@@ -439,7 +449,7 @@ export interface StaffUser {
   lastLoginAt?: string;
 }
 
-export interface StoreBankConfig {
+export interface StoreBankConfig extends ShopOwned {
   bankBin: string; // e.g. "970422" (MB Bank)
   bankCode: string; // e.g. "MB"
   bankName: string; // e.g. "MBBank - Ngân hàng Quân Đội"

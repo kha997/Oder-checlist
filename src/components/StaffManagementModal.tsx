@@ -1,7 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { type UserRole, ROLE_CONFIGS, type StaffUser } from '../types';
-import { Users, Shield, ShieldCheck, UserCheck, Plus, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, Phone, Bike, UtensilsCrossed, Wallet, Crown, Check } from 'lucide-react';
+import { Users, Shield, ShieldCheck, UserCheck, Plus, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, Phone, Bike, UtensilsCrossed, Wallet, Crown, Check, KeyRound, UserPlus } from 'lucide-react';
+import {
+  deleteStaffRequest,
+  listStaffRequests,
+  listStaffRoles,
+  setStaffRole,
+  deleteStaffRole,
+  listShopMembers,
+  approveMember,
+  removeMember,
+  type StaffRequestDoc,
+  type StaffRoleDoc,
+} from '../firebase/firestoreService';
 
 interface StaffManagementModalProps {
   isOpen: boolean;
@@ -12,14 +24,20 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
   const {
     staffUsers,
     activeStaff,
+    currentRole,
+    firebaseUser,
+    assignedRole,
     setActiveStaffId,
     addStaffUser,
     updateStaffUser,
     deleteStaffUser,
     roleConfig,
+    tenancyMode,
+    shopStatus,
+    currentShop,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'switch' | 'manage' | 'matrix'>('switch');
+  const [activeTab, setActiveTab] = useState<'switch' | 'manage' | 'matrix' | 'roles'>('switch');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
 
@@ -30,6 +48,91 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
   const [formEmail, setFormEmail] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [approvingRequestUid, setApprovingRequestUid] = useState<string | null>(null);
+  const [approveRole, setApproveRole] = useState<UserRole>('CASHIER');
+  const [accessRequests, setAccessRequests] = useState<StaffRequestDoc[]>([]);
+  const [roleAssignments, setRoleAssignments] = useState<StaffRoleDoc[]>([]);
+  const [roleFilter, setRoleFilter] = useState('');
+  const [roleSort, setRoleSort] = useState<'name' | 'role' | 'email'>('name');
+  const [loadingRoles, setLoadingRoles] = useState(false);
+
+  const hasServerRole = assignedRole !== null;
+  const isAdmin = currentRole === 'ADMIN' || firebaseUser?.email === 'khafibo@gmail.com';
+
+  const filteredAssignments = React.useMemo(() => {
+    const term = roleFilter.trim().toLowerCase();
+    let list = roleAssignments.filter((a) => {
+      if (!term) return true;
+      return (
+        (a.displayName || '').toLowerCase().includes(term) ||
+        (a.email || '').toLowerCase().includes(term)
+      );
+    });
+    list = [...list].sort((a, b) => {
+      if (roleSort === 'role') {
+        return a.role.localeCompare(b.role);
+      }
+      if (roleSort === 'email') {
+        return (a.email || '').localeCompare(b.email || '');
+      }
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+    return list;
+  }, [roleAssignments, roleFilter, roleSort]);
+
+  const loadRoleData = async () => {
+    if (!isAdmin) return;
+    setLoadingRoles(true);
+    try {
+      if (tenancyMode === 'tenancy') {
+        // Membership is the authority in tenancy mode: one read of the shop
+        // roster yields BOTH the active assignments and the pending joins.
+        if (!currentShop || shopStatus !== 'active') {
+          setAccessRequests([]);
+          setRoleAssignments([]);
+          return;
+        }
+        const members = await listShopMembers(currentShop.shopId);
+        setRoleAssignments(
+          members
+            .filter((m) => m.status === 'active')
+            .map((m) => ({
+              uid: m.uid,
+              email: m.email,
+              displayName: m.displayName,
+              role: m.role,
+              createdAt: m.createdAt,
+            }))
+        );
+        setAccessRequests(
+          members
+            .filter((m) => m.status === 'pending')
+            .map((m) => ({
+              uid: m.uid,
+              email: m.email,
+              displayName: m.displayName,
+              requestedAt: m.createdAt,
+            }))
+        );
+        return;
+      }
+      const [requests, assignments] = await Promise.all([
+        listStaffRequests(),
+        listStaffRoles(),
+      ]);
+      setAccessRequests(requests);
+      setRoleAssignments(assignments);
+    } finally {
+      setLoadingRoles(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && isAdmin) {
+      loadRoleData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isAdmin, tenancyMode, currentShop?.shopId, shopStatus]);
 
   if (!isOpen) return null;
 
@@ -95,6 +198,76 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
       deleteStaffUser(staff.id);
       setSuccessNotice(`Đã xóa nhân viên ${staff.name}`);
       setTimeout(() => setSuccessNotice(null), 3000);
+    }
+  };
+
+  const handleApproveRequest = async (req: StaffRequestDoc) => {
+    try {
+      if (tenancyMode === 'tenancy') {
+        // Tenancy: flip the pending member doc to active with the chosen
+        // role (the rules only let a shop admin do this).
+        if (!currentShop) throw new Error('Không có cửa hàng hoạt động.');
+        await approveMember(currentShop.shopId, req.uid, approveRole);
+      } else {
+        await setStaffRole({
+          uid: req.uid,
+          email: req.email,
+          displayName: req.displayName,
+          role: approveRole,
+          createdAt: new Date().toISOString(),
+        });
+        await deleteStaffRequest(req.uid);
+      }
+      setSuccessNotice(`Đã cấp quyền ${ROLE_CONFIGS[approveRole].label} cho ${req.displayName}`);
+      setTimeout(() => setSuccessNotice(null), 3000);
+      await loadRoleData();
+      setApprovingRequestUid(null);
+    } catch (err) {
+      console.error('Failed to approve access request:', err);
+      alert('Không thể duyệt yêu cầu. Kiểm tra quyền ADMIN và kết nối Firestore.');
+    }
+  };
+
+  const handleDismissRequest = async (req: StaffRequestDoc) => {
+    if (!confirm(`Từ chối yêu cầu tham gia của ${req.displayName}?`)) return;
+    try {
+      if (tenancyMode === 'tenancy') {
+        if (!currentShop) throw new Error('Không có cửa hàng hoạt động.');
+        // Deleting the pending member doc rejects the join; the requester's
+        // client sees it disappear and returns to the onboarding state.
+        await removeMember(currentShop.shopId, req.uid);
+      } else {
+        await deleteStaffRequest(req.uid);
+      }
+      setSuccessNotice('Đã từ chối yêu cầu tham gia');
+      setTimeout(() => setSuccessNotice(null), 3000);
+      await loadRoleData();
+    } catch (err) {
+      console.error('Failed to dismiss access request:', err);
+    }
+  };
+
+  const handleRevokeRole = async (assignment: StaffRoleDoc) => {
+    if (assignment.uid === firebaseUser?.uid) {
+      alert('Không thể thu hồi quyền tài khoản đang đăng nhập!');
+      return;
+    }
+    if (!confirm(`Thu hồi quyền ${ROLE_CONFIGS[assignment.role].label} của ${assignment.displayName}?`)) return;
+    try {
+      if (tenancyMode === 'tenancy') {
+        if (!currentShop) throw new Error('Không có cửa hàng hoạt động.');
+        // Deleting the member doc signs their client out immediately
+        // (membership listener) — same UX as the legacy revoke.
+        await removeMember(currentShop.shopId, assignment.uid);
+      } else {
+        await deleteStaffRole(assignment.uid);
+      }
+      setSuccessNotice(`Đã thu hồi quyền của ${assignment.displayName}`);
+      setTimeout(() => setSuccessNotice(null), 3000);
+      await loadRoleData();
+    } catch (err) {
+      console.error('Failed to revoke role:', err);
+      alert('Không thể thu hồi quyền.');
     }
   };
 
@@ -194,6 +367,11 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
           >
             <UserCheck className="w-3.5 h-3.5" />
             <span>Đổi người trực ca</span>
+            {hasServerRole && (
+              <span className="text-[9px] text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full font-bold">
+                Theo role server
+              </span>
+            )}
             <span className="ml-1 text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-bold">
               {staffUsers.length}
             </span>
@@ -225,6 +403,29 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
             <Shield className="w-3.5 h-3.5" />
             <span>Bảng ma trận quyền hạn</span>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setActiveTab('roles');
+                setShowAddForm(false);
+                loadRoleData();
+              }}
+              className={`px-3 py-2 text-xs font-bold rounded-t-xl transition flex items-center gap-1.5 ${
+                activeTab === 'roles'
+                  ? 'bg-white text-emerald-800 border-t-2 border-emerald-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Phân quyền truy cập</span>
+              {(accessRequests.length > 0 || loadingRoles) && (
+                <span className="ml-1 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded-full font-bold">
+                  {loadingRoles ? '...' : accessRequests.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -237,6 +438,14 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
                   Chọn nhân sự đang sử dụng thiết bị để hệ thống tự động lưu lịch sử giao hàng và thu tiền:
                 </p>
               </div>
+              {hasServerRole && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <p className="leading-relaxed">
+                    Quyền hiện đang được xác định bởi role gán trên server. Việc đổi persona chỉ ảnh hưởng đến tên hiển thị, không mở khóa quyền truy cập.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {staffUsers.map((staff) => {
@@ -247,14 +456,19 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
                     <button
                       key={staff.id}
                       onClick={() => {
+                        if (hasServerRole) return;
                         setActiveStaffId(staff.id);
                         setSuccessNotice(`Đã chuyển sang: ${staff.name} (${cfg.label})`);
                         setTimeout(() => setSuccessNotice(null), 2500);
                       }}
+                      disabled={hasServerRole}
+                      title={hasServerRole ? 'Đã khóa vì quyền được xác định bởi role từ server' : undefined}
                       className={`text-left p-3 rounded-xl border transition flex items-start gap-3 relative ${
                         isCurrent
                           ? 'border-emerald-600 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-500'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          : hasServerRole
+                            ? 'border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
                       <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
@@ -590,6 +804,157 @@ export const StaffManagementModal: React.FC<StaffManagementModalProps> = ({ isOp
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+          {/* TAB 4: ACCESS CONTROL (ADMIN) */}
+          {activeTab === 'roles' && isAdmin && (
+            <div className="space-y-4">
+              {/* P3: shareable invite link — the join path for new people. */}
+              {tenancyMode === 'tenancy' && currentShop && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-emerald-900">Mã mời tham gia cửa hàng</p>
+                    <p className="text-[11px] text-emerald-700">
+                      Người mới nhập mã này rồi chờ bạn duyệt ở danh sách dưới đây.
+                    </p>
+                  </div>
+                  <span className="text-sm font-black tracking-[0.2em] text-emerald-800 bg-white border border-emerald-200 rounded-lg px-2.5 py-1">
+                    {currentShop.inviteCode}
+                  </span>
+                </div>
+              )}
+              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-emerald-700" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        {tenancyMode === 'tenancy'
+                          ? 'Yêu cầu tham gia đang chờ'
+                          : 'Yêu cầu phân quyền đang chờ'}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {tenancyMode === 'tenancy'
+                          ? 'Người dùng nhập mã mời của cửa hàng sẽ ở trạng thái chờ — duyệt để cấp quyền'
+                          : 'Người dùng đăng nhập Google nhưng chưa được cấp quyền sẽ tự gửi yêu cầu'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={loadRoleData}
+                    disabled={loadingRoles}
+                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Làm mới
+                  </button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {loadingRoles && accessRequests.length === 0 && (
+                    <p className="px-4 py-3 text-xs text-slate-500">Đang tải...</p>
+                  )}
+                  {!loadingRoles && accessRequests.length === 0 && (
+                    <p className="px-4 py-3 text-xs text-slate-500">Không có yêu cầu nào đang chờ.</p>
+                  )}
+                  {accessRequests.map((req) => (
+                    <div key={req.uid} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{req.displayName}</p>
+                        <p className="text-[11px] text-slate-500">{req.email || req.uid}</p>
+                        <p className="text-[10px] text-slate-400">Gửi lúc: {req.requestedAt}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select
+                          value={approvingRequestUid === req.uid ? approveRole : 'CASHIER'}
+                          onChange={(e) => {
+                            setApprovingRequestUid(req.uid);
+                            setApproveRole(e.target.value as UserRole);
+                          }}
+                          className="px-2 py-1 text-xs border border-slate-300 rounded-lg"
+                        >
+                          {(Object.keys(ROLE_CONFIGS) as UserRole[]).map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_CONFIGS[r].label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleApproveRequest(req)}
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                        >
+                          Duyệt
+                        </button>
+                        <button
+                          onClick={() => handleDismissRequest(req)}
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          Từ chối
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                  <KeyRound className="w-4 h-4 text-slate-700" />
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-slate-900">Vai trò đã gán</p>
+                    <p className="text-[11px] text-slate-500">
+                      {tenancyMode === 'tenancy'
+                        ? `Lưu trong shops/${currentShop?.shopId ?? '{shopId}'}/members/{uid}. Thu hồi = xoá tài liệu.`
+                        : 'Lưu trong staffRoles/{uid}. Thu hồi = xoá tài liệu.'}
+                    </p>
+                  </div>
+                  {roleAssignments.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        placeholder="Tìm theo tên/email..."
+                        className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg w-36 sm:w-48"
+                      />
+                      <select
+                        value={roleSort}
+                        onChange={(e) => setRoleSort(e.target.value as 'name' | 'role' | 'email')}
+                        className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg"
+                      >
+                        <option value="name">Sắp xếp: Tên</option>
+                        <option value="role">Sắp xếp: Vai trò</option>
+                        <option value="email">Sắp xếp: Email</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {!loadingRoles && roleAssignments.length === 0 && (
+                    <p className="px-4 py-3 text-xs text-slate-500">Chưa gán vai trò nào.</p>
+                  )}
+                  {!loadingRoles && roleAssignments.length > 0 && filteredAssignments.length === 0 && (
+                    <p className="px-4 py-3 text-xs text-slate-500">Không tìm thấy kết quả phù hợp.</p>
+                  )}
+                  {filteredAssignments.map((assignment) => (
+                    <div key={assignment.uid} className="flex items-center justify-between px-4 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{assignment.displayName}</p>
+                        <p className="text-[11px] text-slate-500">{assignment.email || assignment.uid}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ROLE_CONFIGS[assignment.role].badgeClass}`}>
+                          {ROLE_CONFIGS[assignment.role].label}
+                        </span>
+                        <button
+                          onClick={() => handleRevokeRole(assignment)}
+                          disabled={assignment.uid === firebaseUser?.uid}
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          Thu hồi
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

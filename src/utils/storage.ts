@@ -450,13 +450,64 @@ export const STORAGE_KEYS = {
   SCHEDULER_CONFIG: 'oder_checklist_scheduler_config_v1',
 };
 
-export function loadFromStorage<T>(key: string, fallback: T): T {
+// ---------------------------------------------------------------------------
+// Storage namespace (T1 multi-tenancy, see docs/MULTI-TENANT-SPEC.md)
+//
+// Every shop keeps its own copy of the local cache. Without this, a device
+// used by two shops would mix their orders in one flat key — or silently
+// overwrite one shop's data with the other's.
+//
+// An empty namespace is the pre-tenancy behaviour: keys are byte-for-byte the
+// old ones, so nothing changes until a shop is actually selected (P3).
+// ---------------------------------------------------------------------------
+
+let storageNamespace = '';
+
+/** Select the shop whose local cache is in use. '' = pre-tenancy storage. */
+export function setStorageNamespace(namespace: string): void {
+  storageNamespace = namespace ?? '';
+}
+
+export function getStorageNamespace(): string {
+  return storageNamespace;
+}
+
+/** Resolve a base storage key against the active namespace. */
+export function scopedStorageKey(baseKey: string): string {
+  return storageNamespace ? `${baseKey}@${storageNamespace}` : baseKey;
+}
+
+// Deliberately NOT in STORAGE_KEYS and NOT namespaced: this key SELECTS the
+// namespace, so it must be readable before any namespace exists. It records
+// which shop this device last used, so a reload boots straight into that
+// shop's cache instead of the demo fallback (P3).
+const DEVICE_SHOP_KEY = 'oder_checklist_device_shop_v1';
+
+export function getStoredActiveShopId(): string | null {
   try {
-    const item = localStorage.getItem(key);
+    return localStorage.getItem(DEVICE_SHOP_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredActiveShopId(shopId: string): void {
+  try {
+    localStorage.setItem(DEVICE_SHOP_KEY, shopId);
+  } catch (e) {
+    // Private mode / quota: boot simply falls back to the legacy keys.
+    console.warn('Could not persist the active shop id:', e);
+  }
+}
+
+export function loadFromStorage<T>(key: string, fallback: T): T {
+  const scopedKey = scopedStorageKey(key);
+  try {
+    const item = localStorage.getItem(scopedKey);
     if (!item) return fallback;
     return JSON.parse(item) as T;
   } catch (e) {
-    console.warn(`Failed to parse storage item "${key}":`, e);
+    console.warn(`Failed to parse storage item "${scopedKey}":`, e);
     return fallback;
   }
 }
@@ -502,12 +553,13 @@ const isQuotaExceeded = (e: unknown): boolean =>
  * about durability should catch it and tell the user.
  */
 export function saveToStorage<T>(key: string, value: T): void {
+  const scopedKey = scopedStorageKey(key);
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(scopedKey, JSON.stringify(value));
   } catch (e) {
     const quota = isQuotaExceeded(e);
-    console.error(`Failed to save to storage "${key}":`, e);
-    throw new StorageQuotaError(key, quota, e);
+    console.error(`Failed to save to storage "${scopedKey}":`, e);
+    throw new StorageQuotaError(scopedKey, quota, e);
   }
 }
 
@@ -525,6 +577,63 @@ export function trySaveToStorage<T>(key: string, value: T): StorageQuotaError | 
   } catch (e) {
     return e instanceof StorageQuotaError ? e : new StorageQuotaError(key, false, e);
   }
+}
+
+/** Delete the active-namespace entry for a base key. */
+export function removeFromStorage(baseKey: string): void {
+  try {
+    localStorage.removeItem(scopedStorageKey(baseKey));
+  } catch (e) {
+    // A remove that throws is not a data-loss risk — nothing was written.
+    console.warn(`Failed to remove storage item "${scopedStorageKey(baseKey)}":`, e);
+  }
+}
+
+/**
+ * Move the pre-tenancy cache (written before any shop existed) into a shop's
+ * namespace. The data must survive the move — nothing is lost on migration —
+ * and must not end up stored twice: localStorage is ~5 MB per origin and
+ * orders carry delivery photos, so a duplicated key set can itself cause the
+ * quota failure this migration is supposed to avoid.
+ *
+ * Contract:
+ * - copy the legacy key into its namespaced slot, then delete the legacy key;
+ * - if the namespaced slot is already populated, leave BOTH untouched (the
+ *   shop's own data wins; the legacy copy stays as a rollback artefact);
+ * - idempotent: a second run finds no legacy keys and returns an empty list;
+ * - a failed copy (quota) keeps the legacy key: a move that cannot complete
+ *   degrades into "no migration", never into data loss.
+ *
+ * @returns the base keys that were actually migrated.
+ */
+export function migrateLegacyStorageTo(namespace: string): string[] {
+  if (!namespace) return [];
+  const migrated: string[] = [];
+
+  for (const baseKey of Object.values(STORAGE_KEYS)) {
+    const legacyKey = baseKey;
+    const scopedKey = `${baseKey}@${namespace}`;
+
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(legacyKey);
+    } catch (e) {
+      console.warn(`Failed to read storage item "${legacyKey}" during migration:`, e);
+      continue;
+    }
+    if (raw === null) continue;
+    if (localStorage.getItem(scopedKey) !== null) continue; // shop data wins
+
+    try {
+      localStorage.setItem(scopedKey, raw);
+      localStorage.removeItem(legacyKey);
+      migrated.push(baseKey);
+    } catch (e) {
+      console.warn(`Failed to migrate storage item "${legacyKey}" — kept in place:`, e);
+    }
+  }
+
+  return migrated;
 }
 
 /**

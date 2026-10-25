@@ -19,6 +19,8 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, on
     signInWithGoogle,
     signOutGoogle,
     syncLocalToCloud,
+    tenancyMode,
+    currentShop,
   } = useApp();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -86,7 +88,9 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({ isOpen, on
             <div>
               <h3 className="font-bold text-lg leading-tight">Đồng bộ Cloud (Firebase)</h3>
               <p className="text-xs text-emerald-200">
-                Lưu trữ vĩnh viễn & Chia sẻ đơn hàng giữa các thiết bị
+                {tenancyMode === 'tenancy' && currentShop
+                  ? `Cửa hàng: ${currentShop.name} — dữ liệu được cách ly theo cửa hàng`
+                  : 'Lưu trữ vĩnh viễn & Chia sẻ đơn hàng giữa các thiết bị'}
               </p>
             </div>
           </div>
