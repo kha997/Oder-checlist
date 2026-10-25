@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
@@ -8,7 +8,8 @@ import { StaffManagementModal } from './StaffManagementModal';
 import { BankSettingsModal } from './BankSettingsModal';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { type Order } from '../types';
-import { ClipboardCheck, RotateCcw, Home, History, Bell, Cloud, CloudOff, QrCode, Users } from 'lucide-react';
+import { ClipboardCheck, RotateCcw, Home, History, Bell, Cloud, CloudOff, QrCode, Users, KeyRound } from 'lucide-react';
+import { listStaffRequests, listShopRequests } from '../firebase/firestoreService';
 
 export const Header: React.FC = () => {
   const {
@@ -22,6 +23,10 @@ export const Header: React.FC = () => {
     resetToDemoData,
     unreadNotificationCount,
     firebaseUser,
+    currentRole,
+    tenancyMode,
+    shopStatus,
+    currentShop,
   } = useApp();
 
   // Modals state
@@ -32,6 +37,55 @@ export const Header: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [selectedOrderForModal, setSelectedOrderForModal] = useState<Order | null>(null);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  const isAdmin = currentRole === 'ADMIN' || firebaseUser?.email === 'khafibo@gmail.com';
+  // Only an ACTIVE member of the shop may see its pending join requests
+  // (in tenancy mode); in the legacy world it stays admin + staffRequests.
+  const canSeeRequests =
+    isAdmin && (tenancyMode !== 'tenancy' || shopStatus === 'active');
+  const activeShopId = currentShop?.shopId ?? null;
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const handleCopyInvite = async () => {
+    if (!currentShop) return;
+    // Copy the deep link: the recipient lands on the join tab with the code
+    // already filled — nothing to type for a non-technical user.
+    const link = `${window.location.origin}/?join=${currentShop.inviteCode}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch (err) {
+      console.warn('Could not copy invite link:', err);
+      window.prompt('Chia sẻ liên kết mời:', link);
+    }
+  };
+
+  useEffect(() => {
+    if (!canSeeRequests) {
+      setPendingRequestCount(0);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const count =
+          tenancyMode === 'tenancy' && activeShopId
+            ? (await listShopRequests(activeShopId)).length
+            : (await listStaffRequests()).length;
+        if (!cancelled) setPendingRequestCount(count);
+      } catch {
+        if (!cancelled) setPendingRequestCount(0);
+      }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [canSeeRequests, tenancyMode, activeShopId, showStaffModal]);
 
   return (
     <>
@@ -61,10 +115,28 @@ export const Header: React.FC = () => {
                     ODER CHECKLIST
                   </h1>
                   <p className="text-[9px] sm:text-[10px] text-emerald-200 font-medium">
-                    Bán hàng & Giao chung cư
+                    {tenancyMode === 'tenancy' && currentShop
+                      ? currentShop.name
+                      : 'Bán hàng & Giao chung cư'}
                   </p>
                 </div>
               </div>
+              {/* P3: the shop's invite code — admins share it so others can
+                  request to join (approval still required on their part). */}
+              {tenancyMode === 'tenancy' && currentShop && isAdmin && (
+                <button
+                  onClick={handleCopyInvite}
+                  title="Sao chép liên kết mời — gửi cho nhân viên để họ tham gia (duyệt trong Quản lý nhân viên)"
+                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/25 rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-100 transition active:scale-95 shrink-0"
+                >
+                  <KeyRound className="w-3 h-3" />
+                  {inviteCopied ? (
+                    <span className="text-emerald-200">Đã chép ✓</span>
+                  ) : (
+                    <span className="tracking-widest">{currentShop.inviteCode}</span>
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -152,7 +224,7 @@ export const Header: React.FC = () => {
               {/* Confirmer User & RBAC Role Badge */}
               <button
                 onClick={() => setShowStaffModal(true)}
-                className="flex items-center gap-1 sm:gap-1.5 bg-emerald-800/90 hover:bg-emerald-900 text-emerald-100 px-2 py-1.5 rounded-lg text-xs font-semibold border border-emerald-600/60 active:scale-95 transition"
+                className="relative flex items-center gap-1 sm:gap-1.5 bg-emerald-800/90 hover:bg-emerald-900 text-emerald-100 px-2 py-1.5 rounded-lg text-xs font-semibold border border-emerald-600/60 active:scale-95 transition"
                 title={`Người trực ca: ${activeStaff.name} - ${roleConfig.label} (Bấm để đổi ca / phân quyền)`}
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${roleConfig.dotColor}`}></span>
@@ -160,6 +232,11 @@ export const Header: React.FC = () => {
                 <span className="text-[9px] px-1 py-0.2 bg-emerald-950/70 text-emerald-200 rounded font-bold uppercase tracking-wider">
                   {roleConfig.shortLabel}
                 </span>
+                {isAdmin && pendingRequestCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white ring-2 ring-emerald-700">
+                    {pendingRequestCount > 9 ? '9+' : pendingRequestCount}
+                  </span>
+                )}
               </button>
 
               {/* Reset / Demo Scenario Button */}

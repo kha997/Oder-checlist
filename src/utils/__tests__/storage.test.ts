@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  STORAGE_KEYS,
   StorageQuotaError,
   createStorageFailureReporter,
+  getStorageNamespace,
   loadFromStorage,
+  migrateLegacyStorageTo,
+  removeFromStorage,
   saveToStorage,
+  scopedStorageKey,
+  setStorageNamespace,
   storageFailureMessage,
   trySaveToStorage,
 } from '../storage';
@@ -232,5 +238,136 @@ describe('loadFromStorage', () => {
   it('round-trips a stored value', () => {
     vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ ok: true }) });
     expect(loadFromStorage('good', { ok: false })).toEqual({ ok: true });
+  });
+});
+
+/**
+ * T1 multi-tenancy: the local cache is namespaced per shop, or two shops on
+ * one device share a single set of keys and overwrite each other's data.
+ *
+ * The empty namespace must be byte-identical to the pre-tenancy behaviour:
+ * until a shop is actually selected, nothing about storage may change.
+ */
+describe('storage namespace (T1)', () => {
+  let store: Map<string, string>;
+  let setItem: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    store = new Map();
+    setItem = vi.fn((key: string, value: string) => {
+      store.set(key, value);
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem,
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => store.clear(),
+    });
+    setStorageNamespace('');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    setStorageNamespace('');
+  });
+
+  it('leaves keys byte-identical while no shop is selected', () => {
+    expect(scopedStorageKey(STORAGE_KEYS.ORDERS)).toBe(STORAGE_KEYS.ORDERS);
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'ORD-1' }]);
+    expect(store.has(STORAGE_KEYS.ORDERS)).toBe(true);
+    expect(loadFromStorage(STORAGE_KEYS.ORDERS, [])).toEqual([{ id: 'ORD-1' }]);
+    expect(getStorageNamespace()).toBe('');
+  });
+
+  it('reads and writes only inside the active namespace', () => {
+    setStorageNamespace('shp_alpha');
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'A' }]);
+    expect(store.has(`${STORAGE_KEYS.ORDERS}@shp_alpha`)).toBe(true);
+    expect(store.has(STORAGE_KEYS.ORDERS)).toBe(false);
+    expect(loadFromStorage(STORAGE_KEYS.ORDERS, [])).toEqual([{ id: 'A' }]);
+  });
+
+  it('keeps two shops on one device fully separate', () => {
+    setStorageNamespace('shp_alpha');
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'A' }]);
+    setStorageNamespace('shp_beta');
+    // A new shop starts with an EMPTY cache — it must never see shop A's data.
+    expect(loadFromStorage(STORAGE_KEYS.ORDERS, [])).toEqual([]);
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'B' }]);
+    setStorageNamespace('shp_alpha');
+    expect(loadFromStorage(STORAGE_KEYS.ORDERS, [])).toEqual([{ id: 'A' }]);
+    expect(store.get(`${STORAGE_KEYS.ORDERS}@shp_beta`)).toBe(JSON.stringify([{ id: 'B' }]));
+  });
+
+  it('removeFromStorage clears only the active namespace entry', () => {
+    setStorageNamespace('shp_alpha');
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'A' }]);
+    setStorageNamespace('shp_beta');
+    saveToStorage(STORAGE_KEYS.ORDERS, [{ id: 'B' }]);
+
+    removeFromStorage(STORAGE_KEYS.ORDERS);
+
+    expect(store.has(`${STORAGE_KEYS.ORDERS}@shp_beta`)).toBe(false);
+    expect(store.has(`${STORAGE_KEYS.ORDERS}@shp_alpha`)).toBe(true);
+  });
+
+  describe('migrateLegacyStorageTo', () => {
+    it('moves legacy data into the namespace — nothing is lost, nothing duplicated', () => {
+      store.set(STORAGE_KEYS.ORDERS, JSON.stringify([{ id: 'legacy' }]));
+      store.set(STORAGE_KEYS.SOUND_ENABLED, 'true');
+
+      const migrated = migrateLegacyStorageTo('shp_alpha');
+
+      expect(migrated.sort()).toEqual(
+        [STORAGE_KEYS.ORDERS, STORAGE_KEYS.SOUND_ENABLED].sort()
+      );
+      expect(store.get(`${STORAGE_KEYS.ORDERS}@shp_alpha`)).toBe(
+        JSON.stringify([{ id: 'legacy' }])
+      );
+      // The copy must go: a duplicated key set can itself blow the ~5 MB quota.
+      expect(store.has(STORAGE_KEYS.ORDERS)).toBe(false);
+    });
+
+    it('is idempotent — a second run finds nothing to migrate', () => {
+      store.set(STORAGE_KEYS.ORDERS, JSON.stringify([{ id: 'legacy' }]));
+      expect(migrateLegacyStorageTo('shp_alpha')).toHaveLength(1);
+      expect(migrateLegacyStorageTo('shp_alpha')).toEqual([]);
+    });
+
+    it("never overwrites data already living in the shop's namespace", () => {
+      store.set(STORAGE_KEYS.ORDERS, JSON.stringify([{ id: 'legacy' }]));
+      store.set(`${STORAGE_KEYS.ORDERS}@shp_alpha`, JSON.stringify([{ id: 'shopdata' }]));
+
+      const migrated = migrateLegacyStorageTo('shp_alpha');
+
+      expect(migrated).not.toContain(STORAGE_KEYS.ORDERS);
+      expect(JSON.parse(store.get(`${STORAGE_KEYS.ORDERS}@shp_alpha`)!)).toEqual([
+        { id: 'shopdata' },
+      ]);
+      // The skipped legacy copy stays put as a rollback artefact.
+      expect(store.has(STORAGE_KEYS.ORDERS)).toBe(true);
+    });
+
+    it('keeps the legacy copy when the namespaced write fails (quota)', () => {
+      store.set(STORAGE_KEYS.ORDERS, JSON.stringify([{ id: 'legacy' }]));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setItem.mockImplementation(() => {
+        throw new DOMException('quota', 'QuotaExceededError');
+      });
+
+      const migrated = migrateLegacyStorageTo('shp_alpha');
+
+      expect(migrated).toEqual([]);
+      expect(store.has(STORAGE_KEYS.ORDERS)).toBe(true);
+    });
+
+    it('does nothing without a namespace', () => {
+      store.set(STORAGE_KEYS.ORDERS, JSON.stringify([{ id: 'legacy' }]));
+      expect(migrateLegacyStorageTo('')).toEqual([]);
+      expect(store.has(STORAGE_KEYS.ORDERS)).toBe(true);
+    });
   });
 });

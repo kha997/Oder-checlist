@@ -31,6 +31,7 @@ Cùng với đó:
 - **Thông báo hẹn giờ** — nhắc trước 30 phút cho các đơn có giờ hẹn giao.
 - **Âm thanh phản hồi** — Web Audio API, có công tắc bật/tắt.
 - **Phân quyền theo vai trò** — Admin / Bếp / Shipper / Thu ngân, mỗi vai trò có màn hình và quyền thao tác riêng.
+- **Nhiều cửa hàng (self-serve)** — ai mở link cũng đăng nhập Google và **tạo được cửa hàng riêng** của mình, hoặc nhập mã mời (deep link `?join=CODE`) để tham gia cửa hàng khác — hàng chờ duy nhất cần phê duyệt là *yêu cầu tham gia*. Dữ liệu các cửa hàng cách ly ở server qua Firestore rules (`shopId` trên từng document); chủ shop chia sẻ mã mời ngay trên Header. Trạng thái chưa có cửa hàng / đang chờ duyệt đều dùng được bình thường ở chế độ lưu cục bộ. Chi tiết: `docs/MULTI-TENANT-SPEC.md`.
 
 ---
 
@@ -127,9 +128,8 @@ Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng
 
 ### Bảo mật
 
-- **Phân quyền chỉ nằm ở phía client.** Vai trò và các cờ `canDeleteOrders`, `canConfirmPayment`… nằm trong `ROLE_CONFIGS` và được kiểm tra trong React. Một người gọi thẳng API Firestore có thể bỏ qua toàn bộ. Ai đã đăng nhập Google thì đọc và ghi được dữ liệu — `firestore.rules` chỉ chặn người chưa xác thực.
-- **Chưa có liên kết giữa `users` và `auth.uid`.** Rules không biết tài khoản Google nào ứng với nhân viên nào, nên không thể phân quyền theo vai trò ở tầng dữ liệu. Đây là việc cần làm trước khi dùng nhiều người thật.
-- **Email admin hardcode trong `firestore.rules`.** Hiện chỉ có một email được quyền xóa đơn ở tầng dữ liệu.
+- **Phân quyền đã được thực thi ở tầng dữ liệu.** Vai trò được phân giải từ `staffRoles/{uid}` và `firestore.rules` chặn tài khoản chưa được cấp quyền khỏi mọi collection. Bootstrap email `khafibo@gmail.com` và collection `admins/{uid}` vẫn được giữ như fallback. Mỗi người đăng nhập Google riêng, admin duyệt yêu cầu trong màn hình **Quản lý nhân viên → Phân quyền truy cập**.
+- **Tài khoản chưa được phân quyền bị chặn hoàn toàn.** Khi đăng nhập mà chưa có role, app tự gửi yêu cầu vào `staffRequests/{uid}` và chỉ hoạt động ở chế độ local (không sync cloud). Thu hồi quyền = xoá `staffRoles/{uid}`.
 
 ### Toàn vẹn dữ liệu
 
@@ -139,6 +139,7 @@ Danh sách này là những hạn chế **đã xác nhận bằng kiểm chứng
 
 - **Chưa có ESLint.** Bị chặn bởi xung đột phiên bản TypeScript ở trên.
 - **`firebase-applet-config.json` được commit kèm `projectId`, `apiKey`, `oAuthClientId`.** Với Firebase, những giá trị này được thiết kế để công khai — bảo mật phải đến từ `firestore.rules` và Authorized Domains. Nhưng nếu bạn tự triển khai, hãy đổi sang project của mình và giới hạn Authorized Domains.
+- **Phân quyền collection-level (chưa giới hạn field).** Rules chặn theo collection, nhưng do app đồng bộ toàn bộ đơn hàng (`setDoc`), shipper/cashier/kitchen vẫn có thể ghi toàn bộ document. Xem `docs/RBAC.md §7` để biết kế hoạch chuyển sang per-action writes + field-level restrictions.
 
 ---
 

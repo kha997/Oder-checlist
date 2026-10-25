@@ -10,9 +10,14 @@ import {
   OPERATOR_USERS,
   STORAGE_KEYS,
   loadFromStorage,
+  removeFromStorage,
   trySaveToStorage,
   createStorageFailureReporter,
   storageFailureMessage,
+  setStorageNamespace,
+  migrateLegacyStorageTo,
+  getStoredActiveShopId,
+  setStoredActiveShopId,
   type StorageQuotaError,
   formatVND,
 } from '../utils/storage';
@@ -24,7 +29,7 @@ import {
 } from '../utils/browserNotification';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, signInWithPopup, signOut, googleProvider } from '../firebase/config';
-import { subscribeToFirebaseCollections, upsertOrderFirestore, updateOrderFirestore, upsertCustomerFirestore, upsertProductFirestore, upsertCondoFirestore, addStockLogFirestore, upsertStaffUserFirestore, deleteStaffUserFirestore, upsertBankConfigFirestore, seedLocalDataToFirestoreIfEmpty } from '../firebase/firestoreService';
+import { subscribeToFirebaseCollections, upsertOrderFirestore, updateOrderFirestore, upsertCustomerFirestore, upsertProductFirestore, upsertCondoFirestore, addStockLogFirestore, upsertStaffUserFirestore, deleteStaffUserFirestore, upsertBankConfigFirestore, seedLocalDataToFirestoreIfEmpty, getStaffRole, requestStaffAccess, deleteStaffRequest, subscribeToStaffRole, setActiveShopId, probeAccount, createShop, joinShop, getShop, getShopMember, subscribeToMembership, updateAccountIndex, adoptLocalDocumentsIntoShop, migrateLegacyStaffRolesToMembers, type CloudCollection, type TenancyProbe, type ShopDoc, type AccountDoc, type ShopMemberDoc } from '../firebase/firestoreService';
 
 interface AppContextType {
   // Navigation
@@ -155,17 +160,87 @@ interface AppContextType {
 
   // Firebase & Cloud Sync
   firebaseUser: User | null;
-  cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'needs_auth' | 'error';
+  cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'needs_auth' | 'needs_role' | 'error';
   isCloudSyncActive: boolean;
   lastCloudSyncTime: string | null;
   signInWithGoogle: () => Promise<void>;
   signOutGoogle: () => Promise<void>;
   syncLocalToCloud: () => Promise<void>;
+
+  // Server-assigned role (RBAC). `null` means "signed in but not yet granted a
+  // role" or "not signed in" — in that case the app keeps working on local
+  // data only, and cloud sync stays off.
+  assignedRole: UserRole | null;
+  hasPendingAccessRequest: boolean;
+  canWriteCloudCollection: (collection: CloudCollection) => boolean;
+
+  // ---- P3 tenancy: self-serve shop onboarding (spec §3, §8) --------------
+  // Which rules/data world this session is in: `legacy` = Phase 1 (old
+  // rules), `tenancy` = multi-tenant, null = signed out / not yet probed.
+  // `shopStatus` (tenancy only): 'none' → onboarding modal, 'pending' →
+  // waiting for an admin's approval (local-only), 'active' → scoped session.
+  tenancyMode: 'legacy' | 'tenancy' | null;
+  shopStatus: 'none' | 'pending' | 'active' | null;
+  /** The signed-in user's navigation index (`accounts/{uid}`) — authz never reads it. */
+  shopAccount: AccountDoc | null;
+  currentShop: ShopDoc | null;
+  onboardingVisible: boolean;
+  showOnboarding: () => void;
+  dismissOnboarding: () => void;
+  /** Create the signed-in user's own shop (self-serve, 1 per account). */
+  createShopAction: (name: string) => Promise<{ shopId: string; inviteCode: string }>;
+  /** Request membership via an invite code → pending until approved. */
+  joinShopAction: (inviteCode: string) => Promise<void>;
 }
+
+/**
+ * Mirrors `isBootstrapAdmin()` in firestore.rules: the one account allowed to
+ * adopt un-namespaced legacy documents and provision other accounts' indexes.
+ * Kept local on purpose — the rules are the authority; this only decides
+ * whether the client ATTEMPTS writes nobody else could succeed at.
+ */
+const BOOTSTRAP_ADMIN_EMAIL = 'khafibo@gmail.com';
+
+/**
+ * Role-aware write gate for cloud collections, mirroring firestore.rules.
+ * Every role works with orders; only ADMIN and CASHIER manage customers;
+ * products/condos/stockLogs/users/settings are ADMIN only.
+ */
+const canWriteCloudCollectionForRole = (
+  collectionName: CloudCollection,
+  role: UserRole | null
+): boolean => {
+  if (!role) return false;
+  switch (collectionName) {
+    case 'orders':
+      return true;
+    case 'customers':
+      return role === 'ADMIN' || role === 'CASHIER';
+    case 'products':
+    case 'condos':
+    case 'stockLogs':
+    case 'users':
+    case 'settings':
+      return role === 'ADMIN';
+    default:
+      return false;
+  }
+};
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // P3: restore this device's shop scope BEFORE the local-cache initializers
+  // below run. A returning device must boot straight into its namespaced
+  // cache — otherwise the (already migrated, legacy-keys-deleted) data would
+  // resolve to the demo fallback until the first cloud snapshot arrives.
+  // First-time visitors have no stored id: nothing happens, exactly as before.
+  const bootShopId = getStoredActiveShopId();
+  if (bootShopId) {
+    setStorageNamespace(bootShopId);
+    setActiveShopId(bootShopId);
+  }
+
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('HOME');
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
 
@@ -216,7 +291,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   }, [staffUsers, activeStaffId]);
 
-  const currentRole: UserRole = activeStaff.role;
+  // The role granted by the server (`staffRoles/{uid}`). When someone is
+  // signed in, this — not the locally selected persona — decides what the app
+  // allows, because it is the only role the Firestore rules can enforce.
+  const [assignedRole, setAssignedRole] = useState<UserRole | null>(null);
+  const [hasPendingAccessRequest, setHasPendingAccessRequest] = useState(false);
+
+  const currentRole: UserRole = assignedRole ?? activeStaff.role;
   const roleConfig: RoleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.ADMIN;
   const currentUser: string = activeStaff.name;
   const availableUsers: string[] = useMemo(() => staffUsers.map((s) => s.name), [staffUsers]);
@@ -507,9 +588,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Firebase Auth and Cloud Sync State
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<
-    'synced' | 'syncing' | 'offline' | 'needs_auth' | 'error'
+    'synced' | 'syncing' | 'offline' | 'needs_auth' | 'needs_role' | 'error'
   >('needs_auth');
   const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
+
+  // ---- P3 tenancy state (docs/MULTI-TENANT-SPEC.md §8) --------------------
+  // `tenancyMode` is decided by probing `accounts/{uid}`: permission-denied
+  // means the OLD rules are live and the app behaves exactly like Phase 1.
+  // 'tenancy' + no shop = the onboarding world (dismissable, local-first).
+  const [tenancyMode, setTenancyMode] = useState<'legacy' | 'tenancy' | null>(null);
+  const [shopStatus, setShopStatus] = useState<'none' | 'pending' | 'active' | null>(null);
+  const [shopAccount, setShopAccount] = useState<AccountDoc | null>(null);
+  const [currentShop, setCurrentShop] = useState<ShopDoc | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // Bumped to re-run the auth/shop flow after create/join/approval without a
+  // page reload (the flow reads server state from scratch each run).
+  const [authFlowNonce, setAuthFlowNonce] = useState(0);
+  // --------------------------------------------------------------------------
+
+  // Mirrors the write rules in firestore.rules. Kept next to the sync code on
+  // purpose: if the rules change, this has to change with them, otherwise the
+  // app attempts writes it knows will be rejected and reports a confusing
+  // error for a whole batch of otherwise valid writes.
+  const canWriteCloudCollection = useCallback(
+    (collectionName: CloudCollection): boolean =>
+      canWriteCloudCollectionForRole(collectionName, assignedRole ?? currentRole),
+    [assignedRole, currentRole]
+  );
 
   const isCloudSyncActive = Boolean(firebaseUser && cloudSyncStatus === 'synced');
 
@@ -527,34 +633,127 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const signOutGoogle = async () => {
     await signOut(auth);
     setFirebaseUser(null);
+    setAssignedRole(null);
+    setHasPendingAccessRequest(false);
     setCloudSyncStatus('needs_auth');
+  };
+
+  // ---- P3 onboarding actions (spec §3) ----------------------------------
+  // Creating a shop is open to anyone with the link (self-serve); JOINING an
+  // existing shop is the only approval-gated path. Both actions re-run the
+  // auth flow when they finish (no page reload needed).
+  const showOnboarding = () => {
+    setOnboardingDismissed(false);
+    setOnboardingOpen(true);
+  };
+
+  const dismissOnboarding = () => {
+    setOnboardingDismissed(true);
+    setOnboardingOpen(false);
+  };
+
+  const createShopAction = async (
+    name: string
+  ): Promise<{ shopId: string; inviteCode: string }> => {
+    if (!firebaseUser) {
+      throw new Error('Bạn cần đăng nhập Google trước khi tạo cửa hàng.');
+    }
+    const result = await createShop({
+      ownerUid: firebaseUser.uid,
+      ownerEmail: firebaseUser.email ?? '',
+      ownerDisplayName: firebaseUser.displayName ?? firebaseUser.email ?? '',
+      name,
+    });
+
+    // Adopt the pre-tenancy cloud dataset BY PATH before the first scoped
+    // seed can run: post-P4 rules deny enumerating collections by design,
+    // but the owner's browser already holds every document id. Only the
+    // bootstrap super-admin may perform this write (rules) — for anyone else
+    // this block is skipped and the prefixed-seed path covers a fresh shop.
+    if (firebaseUser.email === BOOTSTRAP_ADMIN_EMAIL) {
+      try {
+        const adoption = await adoptLocalDocumentsIntoShop(result.shopId, {
+          orders: orders.map((o) => o.id),
+          customers: customers.map((c) => c.id),
+          products: products.map((p) => p.id),
+          condos: condos.map((c) => c.id),
+          stockLogs: stockLogs.map((l) => l.id),
+          users: staffUsers.map((u) => u.id),
+        });
+        console.info('[tenancy] legacy adoption:', adoption);
+      } catch (err) {
+        console.warn('[tenancy] legacy adoption failed (seed covers the rest):', err);
+      }
+    }
+
+    // Convert legacy staffRoles → members. Copy only — the staffRoles docs
+    // stay until P5 as the rollback path. A fresh account has none, and a
+    // caller without an admin role cannot even list them: it no-ops.
+    void migrateLegacyStaffRolesToMembers(result.shopId)
+      .then((res) => console.info('[tenancy] staffRoles → members:', res))
+      .catch((err) => console.warn('[tenancy] staffRoles migration failed:', err));
+
+    setOnboardingOpen(false);
+    setAuthFlowNonce((n) => n + 1);
+    return result;
+  };
+
+  const joinShopAction = async (inviteCode: string): Promise<void> => {
+    if (!firebaseUser) {
+      throw new Error('Bạn cần đăng nhập Google trước khi tham gia cửa hàng.');
+    }
+    await joinShop({
+      uid: firebaseUser.uid,
+      email: firebaseUser.email ?? '',
+      displayName: firebaseUser.displayName ?? firebaseUser.email ?? '',
+      inviteCode,
+    });
+    setOnboardingOpen(false);
+    setAuthFlowNonce((n) => n + 1);
   };
 
   const syncLocalToCloud = async () => {
     if (!firebaseUser) {
       throw new Error('Vui lòng đăng nhập Google để kích hoạt đồng bộ Cloud.');
     }
+    if (!assignedRole) {
+      throw new Error(
+        'Tài khoản chưa được phân quyền. Nhờ chủ quán duyệt trong màn hình Quản lý nhân viên.'
+      );
+    }
     setCloudSyncStatus('syncing');
     try {
       for (const ord of orders) {
         await upsertOrderFirestore(ord);
       }
-      for (const c of customers) {
-        await upsertCustomerFirestore(c);
+      if (canWriteCloudCollection('customers')) {
+        for (const c of customers) {
+          await upsertCustomerFirestore(c);
+        }
       }
-      for (const p of products) {
-        await upsertProductFirestore(p);
+      if (canWriteCloudCollection('products')) {
+        for (const p of products) {
+          await upsertProductFirestore(p);
+        }
       }
-      for (const condo of condos) {
-        await upsertCondoFirestore(condo);
+      if (canWriteCloudCollection('condos')) {
+        for (const condo of condos) {
+          await upsertCondoFirestore(condo);
+        }
       }
-      for (const l of stockLogs) {
-        await addStockLogFirestore(l);
+      if (canWriteCloudCollection('stockLogs')) {
+        for (const l of stockLogs) {
+          await addStockLogFirestore(l);
+        }
       }
-      for (const s of staffUsers) {
-        await upsertStaffUserFirestore(s);
+      if (canWriteCloudCollection('users')) {
+        for (const s of staffUsers) {
+          await upsertStaffUserFirestore(s);
+        }
       }
-      await upsertBankConfigFirestore(bankConfig);
+      if (canWriteCloudCollection('settings')) {
+        await upsertBankConfigFirestore(bankConfig);
+      }
       setLastCloudSyncTime(new Date().toISOString());
       setCloudSyncStatus('synced');
     } catch (err) {
@@ -622,106 +821,415 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Real-time Firestore synchronization listener
   useEffect(() => {
     let unsubSnapshot: (() => void) | null = null;
+    let unsubRole: (() => void) | null = null;
 
-    const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      if (user) {
-        setCloudSyncStatus('syncing');
-        try {
-          await seedLocalDataToFirestoreIfEmpty({
-            orders,
-            customers,
-            products,
-            condos,
-            stockLogs,
-            staffUsers,
-          });
+    // Shared tail of BOTH flows (legacy + tenancy): the session (role, and
+    // for tenancy the shop scope) is already resolved, so now the local
+    // dataset seeds into an empty cloud and the subscription starts.
+    // `assignedRole` flips LAST — after the listeners are registered — so an
+    // effect re-run triggered by the change can cleanly unsubscribe them.
+    const beginCloudSession = async (user: User, role: UserRole) => {
+      if (user.uid) {
+        // The legacy access request has served its purpose (if any).
+        deleteStaffRequest(user.uid).catch(() => {
+          /* best effort — the request may already be gone */
+        });
+      }
 
-          // Check if admin
-          if (user.email === 'khafibo@gmail.com') {
-            const adminStaff = staffUsers.find(
-              (s) => s.email === 'khafibo@gmail.com' || s.role === 'ADMIN'
-            );
-            if (adminStaff) {
-              setActiveStaffIdState(adminStaff.id);
+      // Point the active persona at the staff record that matches this role,
+      // preferring an exact email match, so names in the UI line up with the
+      // account that is actually signed in.
+      const matchingStaff =
+        staffUsers.find((s) => s.email && s.email === user.email) ??
+        staffUsers.find((s) => s.role === role);
+      if (matchingStaff) {
+        setActiveStaffIdState(matchingStaff.id);
+      }
+
+      try {
+        await seedLocalDataToFirestoreIfEmpty(
+          { orders, customers, products, condos, stockLogs, staffUsers },
+          { canWrite: (collection) => canWriteCloudCollectionForRole(collection, role) }
+        );
+
+        unsubSnapshot = subscribeToFirebaseCollections({
+          onOrdersChange: (remoteOrders) => {
+            if (remoteOrders && remoteOrders.length > 0) {
+              setOrders(remoteOrders);
+              setLastCloudSyncTime(new Date().toISOString());
+              setCloudSyncStatus('synced');
             }
-          }
+          },
+          onCustomersChange: (remoteCust) => {
+            if (remoteCust && remoteCust.length > 0) {
+              setCustomers(remoteCust);
+            }
+          },
+          onProductsChange: (remoteProds) => {
+            if (remoteProds && remoteProds.length > 0) {
+              setRawProducts(
+                remoteProds.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  price: p.price,
+                  cost: p.cost !== undefined ? p.cost : Math.round(p.price * 0.45),
+                  initialStock: p.initialStock,
+                  stockReceived: p.stockReceived,
+                  unit: p.unit || 'Phần',
+                }))
+              );
+            }
+          },
+          onCondosChange: (remoteCondos) => {
+            if (remoteCondos && remoteCondos.length > 0) {
+              setCondos(remoteCondos);
+            }
+          },
+          onStockLogsChange: (remoteLogs) => {
+            if (remoteLogs && remoteLogs.length > 0) {
+              setStockLogs(remoteLogs);
+            }
+          },
+          onStaffChange: (remoteStaff) => {
+            if (remoteStaff && remoteStaff.length > 0) {
+              setStaffUsers(remoteStaff);
+            }
+          },
+          onBankConfigChange: (remoteBank) => {
+            if (remoteBank && remoteBank.bankBin && remoteBank.accountNumber) {
+              setBankConfig(remoteBank);
+            }
+          },
+          onError: (err) => {
+            console.warn('Real-time sync error:', err);
+            setCloudSyncStatus('error');
+          },
+        });
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to initialize Firebase listeners:', err);
+        setCloudSyncStatus('error');
+      } finally {
+        // Only now does the server role become the UI role (see comment at
+        // the listener registration above).
+        setAssignedRole(role);
+        setHasPendingAccessRequest(false);
+      }
+    };
 
-          unsubSnapshot = subscribeToFirebaseCollections({
-            onOrdersChange: (remoteOrders) => {
-              if (remoteOrders && remoteOrders.length > 0) {
-                setOrders(remoteOrders);
-                setLastCloudSyncTime(new Date().toISOString());
-                setCloudSyncStatus('synced');
-              }
-            },
-            onCustomersChange: (remoteCust) => {
-              if (remoteCust && remoteCust.length > 0) {
-                setCustomers(remoteCust);
-              }
-            },
-            onProductsChange: (remoteProds) => {
-              if (remoteProds && remoteProds.length > 0) {
-                setRawProducts(
-                  remoteProds.map((p) => ({
-                    id: p.id,
-                    name: p.name,
-                    price: p.price,
-                    cost: p.cost !== undefined ? p.cost : Math.round(p.price * 0.45),
-                    initialStock: p.initialStock,
-                    stockReceived: p.stockReceived,
-                    unit: p.unit || 'Phần',
-                  }))
-                );
-              }
-            },
-            onCondosChange: (remoteCondos) => {
-              if (remoteCondos && remoteCondos.length > 0) {
-                setCondos(remoteCondos);
-              }
-            },
-            onStockLogsChange: (remoteLogs) => {
-              if (remoteLogs && remoteLogs.length > 0) {
-                setStockLogs(remoteLogs);
-              }
-            },
-            onStaffChange: (remoteStaff) => {
-              if (remoteStaff && remoteStaff.length > 0) {
-                setStaffUsers(remoteStaff);
-              }
-            },
-            onBankConfigChange: (remoteBank) => {
-              if (remoteBank && remoteBank.bankBin && remoteBank.accountNumber) {
-                setBankConfig(remoteBank);
-              }
-            },
-            onError: (err) => {
-              console.warn('Real-time sync error:', err);
-              setCloudSyncStatus('error');
-            },
-          });
+    // ---- P3 tenancy flow (spec §8): no shop → onboarding, pending → wait,
+    // active → scope the whole data layer to the shop. Membership — never
+    // the account index — decides what this client may read.
+    const runTenancySession = async (user: User, account: AccountDoc | null) => {
+      setTenancyMode('tenancy');
+      setShopAccount(account);
+
+      const activeShops = account?.shops ?? [];
+      const pendingShops = account?.pendingShops ?? [];
+      // Candidates in priority order: the remembered default first, then any
+      // other active membership, then requested-but-pending shops.
+      const candidates = [
+        ...new Set([
+          ...(account?.defaultShopId && activeShops.includes(account.defaultShopId)
+            ? [account.defaultShopId]
+            : []),
+          ...activeShops,
+          ...pendingShops,
+        ]),
+      ];
+
+      let activeSid: string | null = null;
+      let activeMember: ShopMemberDoc | null = null;
+      let pendingSid: string | null = null;
+      let pendingMember: ShopMemberDoc | null = null;
+      for (const sid of candidates) {
+        let m: ShopMemberDoc | null = null;
+        try {
+          m = await getShopMember(sid, user.uid);
         } catch (err) {
-          console.error('Failed to initialize Firebase listeners:', err);
-          setCloudSyncStatus('error');
+          console.warn(`Tenancy: cannot read membership of ${sid}:`, err);
         }
-      } else {
-        setCloudSyncStatus('needs_auth');
+        if (m && m.status === 'active') {
+          activeSid = sid;
+          activeMember = m;
+          break;
+        }
+        if (m && m.status === 'pending' && !pendingSid) {
+          pendingSid = sid;
+          pendingMember = m;
+        }
+      }
+
+      const goLocalOnly = (status: 'none' | 'pending') => {
+        setCurrentShop(null);
+        setShopStatus(status);
+        setAssignedRole(null);
+        setHasPendingAccessRequest(false);
         if (unsubSnapshot) {
           unsubSnapshot();
           unsubSnapshot = null;
         }
+        setCloudSyncStatus('offline');
+      };
+
+      if (!activeSid && !pendingSid) {
+        // Stale index: the memberships behind it are gone (rejected or
+        // revoked — `shops` can never shrink, so the pointer lingers).
+        // Clear what CAN be cleared (pendingShops) and surface onboarding:
+        // recovery is a fresh invite (joinShop heals the index) or being
+        // re-added by the shop's admin.
+        if (pendingShops.length > 0) {
+          try {
+            await updateAccountIndex(user.uid, { pendingShops: [] });
+          } catch (err) {
+            console.warn('Tenancy: could not clear stale pendingShops:', err);
+          }
+        }
+        if (activeShops.length > 0) {
+          console.warn(
+            '[tenancy] account index points at a shop without membership:',
+            activeShops
+          );
+        }
+        goLocalOnly('none');
+        if (!onboardingDismissed) setOnboardingOpen(true);
+        return;
       }
+
+      if (!activeSid) {
+        // Waiting for an admin's decision: local-only, but watch the
+        // membership so an approval or rejection lands without a reload.
+        const sid = pendingSid!;
+        const member = pendingMember!;
+        goLocalOnly('pending');
+        // A pending member may READ the shop doc — name it in the banner.
+        try {
+          setCurrentShop(await getShop(sid));
+        } catch {
+          setCurrentShop(null);
+        }
+        let lastSeen = `${member.status}:${member.role}`;
+        unsubRole = subscribeToMembership(sid, user.uid, (live) => {
+          const key = live ? `${live.status}:${live.role}` : 'gone';
+          if (key === lastSeen) return;
+          lastSeen = key;
+          setAuthFlowNonce((n) => n + 1); // re-run: re-resolve from scratch
+        });
+        return;
+      }
+
+      // ---- active membership → activate the shop ------------------------
+      const sid = activeSid;
+      const member = activeMember!;
+
+      // Heal the navigation index when approval outran it (approved while
+      // this client was offline): one grow, allowed by the rules for self.
+      if (account && !activeShops.includes(sid)) {
+        try {
+          await updateAccountIndex(user.uid, {
+            shops: [...activeShops, sid],
+            defaultShopId: account.defaultShopId || sid,
+            pendingShops: pendingShops.filter((s) => s !== sid),
+          });
+        } catch (err) {
+          console.warn('Tenancy: could not heal the account index:', err);
+        }
+      }
+      setShopAccount(account);
+
+      // Scope: cloud reads/writes AND the local namespace both follow the
+      // shop; the device remembers it so the next boot starts scoped.
+      setActiveShopId(sid);
+      setStorageNamespace(sid);
+      migrateLegacyStorageTo(sid);
+      setStoredActiveShopId(sid);
+
+      let shop: ShopDoc | null = null;
+      try {
+        shop = await getShop(sid);
+      } catch (err) {
+        console.warn(`Tenancy: cannot load shop ${sid}:`, err);
+      }
+      setCurrentShop(shop);
+      setShopStatus('active');
+
+      const role: UserRole = member.role;
+
+      // Membership IS the revocation channel in tenancy mode: deleting the
+      // member doc signs this client out immediately (Phase 1 UX).
+      let lastSeen = `${member.status}:${member.role}`;
+      unsubRole = subscribeToMembership(sid, user.uid, async (live) => {
+        const key = live ? `${live.status}:${live.role}` : 'gone';
+        if (!live || live.status !== 'active') {
+          try {
+            await signOut(auth);
+          } catch (err) {
+            console.warn('Failed to sign out after revocation:', err);
+          }
+          setFirebaseUser(null);
+          setAssignedRole(null);
+          setHasPendingAccessRequest(false);
+          if (unsubSnapshot) {
+            unsubSnapshot();
+            unsubSnapshot = null;
+          }
+          if (unsubRole) {
+            unsubRole();
+            unsubRole = null;
+          }
+          setCloudSyncStatus('needs_auth');
+          alert('Quyền truy cập đã bị thu hồi. Vui lòng liên hệ chủ cửa hàng để được cấp lại quyền.');
+          return;
+        }
+        if (key !== lastSeen) {
+          lastSeen = key;
+          setAssignedRole(live.role); // role changed → effect re-runs
+        }
+      });
+
+      await beginCloudSession(user, role);
+    };
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      if (unsubRole) {
+        unsubRole();
+        unsubRole = null;
+      }
+      if (!user) {
+        setAssignedRole(null);
+        setHasPendingAccessRequest(false);
+        // Namespace + device shop key deliberately SURVIVE sign-out: the
+        // local cache on this device keeps showing the last shop's data
+        // (local-first), and signing back in picks it up again.
+        setTenancyMode(null);
+        setShopStatus(null);
+        setShopAccount(null);
+        setCurrentShop(null);
+        setOnboardingOpen(false);
+        if (unsubSnapshot) {
+          unsubSnapshot();
+          unsubSnapshot = null;
+        }
+        setCloudSyncStatus('needs_auth');
+        return;
+      }
+
+      setCloudSyncStatus('syncing');
+
+      // ---- P3: which rules generation is live? --------------------------
+      // `accounts/{uid}` does not exist before the P4 deploy, so a
+      // permission-denied on that get is the deterministic "still
+      // single-tenant" signal — no feature flag, the backend answers.
+      let probe: TenancyProbe;
+      try {
+        probe = await probeAccount(user.uid);
+      } catch (err) {
+        // Cannot classify the backend (offline, …): stay local and let the
+        // next sign-in/reload retry instead of guessing wrong.
+        console.warn('Tenancy probe failed — staying local:', err);
+        setAssignedRole(null);
+        setCloudSyncStatus('error');
+        return;
+      }
+      if (probe.mode === 'tenancy') {
+        await runTenancySession(user, probe.account);
+        return;
+      }
+
+      // Phase 1 single-tenant world (old rules still deployed) — unchanged.
+      setTenancyMode('legacy');
+      setShopStatus(null);
+      setShopAccount(null);
+      setCurrentShop(null);
+      setOnboardingOpen(false);
+
+      // 1. Resolve the role from the SERVER. This is the authoritative role:
+      //    the Firestore rules read the same document, so the UI and the data
+      //    layer can no longer disagree. A locally selected persona is only a
+      //    display convenience now.
+      let role: UserRole | null = null;
+      try {
+        const roleDoc = await getStaffRole(user.uid);
+        role = roleDoc?.role ?? null;
+      } catch (err) {
+        console.warn('Could not resolve the assigned role:', err);
+      }
+
+      // Listen for role revocation/changes in real time.
+      unsubRole = subscribeToStaffRole(user.uid, async (liveRoleDoc) => {
+        const liveRole = liveRoleDoc?.role ?? null;
+        if (liveRole && liveRole !== assignedRole) {
+          // Role changed (e.g. upgraded by admin) — refresh session.
+          setAssignedRole(liveRole);
+          setHasPendingAccessRequest(false);
+          return;
+        }
+        if (!liveRole && assignedRole) {
+          // Role revoked or deleted by admin — sign out immediately.
+          try {
+            await signOut(auth);
+          } catch (err) {
+            console.warn('Failed to sign out after role revocation:', err);
+          }
+          setFirebaseUser(null);
+          setAssignedRole(null);
+          setHasPendingAccessRequest(false);
+          if (unsubSnapshot) {
+            unsubSnapshot();
+            unsubSnapshot = null;
+          }
+          if (unsubRole) {
+            unsubRole();
+            unsubRole = null;
+          }
+          setCloudSyncStatus('needs_auth');
+          alert('Quyền truy cập đã bị thu hồi. Vui lòng liên hệ chủ quán để được cấp lại quyền.');
+        }
+      });
+
+      // 2. No role yet: ask for one, and stay on local data. Every collection
+      //    would be denied anyway, so subscribing would only produce a stream
+      //    of permission errors.
+      if (!role) {
+        setAssignedRole(null);
+        setCloudSyncStatus('needs_role');
+        if (unsubSnapshot) {
+          unsubSnapshot();
+          unsubSnapshot = null;
+        }
+        try {
+          await requestStaffAccess({
+            uid: user.uid,
+            email: user.email ?? '',
+            displayName: user.displayName ?? user.email ?? '',
+            requestedAt: new Date().toISOString(),
+          });
+          setHasPendingAccessRequest(true);
+        } catch (err) {
+          console.warn('Could not file an access request:', err);
+        }
+        return;
+      }
+
+      await beginCloudSession(user, role);
     });
 
     return () => {
       unsubAuth();
+      if (unsubRole) {
+        unsubRole();
+      }
       if (unsubSnapshot) {
         unsubSnapshot();
       }
     };
-  }, []);
+    // `authFlowNonce` re-runs the whole flow after create/join/approval so a
+    // membership change takes effect without a page reload.
+  }, [assignedRole, authFlowNonce]);
 
-  // Dynamic Product calculation:
+
+// Dynamic Product calculation:
   // Strictly prevent double deduction and stock drift.
   // Quantity sold is computed directly from active (non-cancelled) orders.
   const products: Product[] = useMemo(() => {
@@ -1515,14 +2023,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Reset to Demo Data
   const resetToDemoData = () => {
-    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
-    localStorage.removeItem(STORAGE_KEYS.CONDOS);
-    localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
-    localStorage.removeItem(STORAGE_KEYS.ORDERS);
-    localStorage.removeItem(STORAGE_KEYS.STOCK_LOGS);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    localStorage.removeItem(STORAGE_KEYS.STAFF_USERS);
-    localStorage.removeItem(STORAGE_KEYS.ACTIVE_STAFF_ID);
+    removeFromStorage(STORAGE_KEYS.PRODUCTS);
+    removeFromStorage(STORAGE_KEYS.CONDOS);
+    removeFromStorage(STORAGE_KEYS.CUSTOMERS);
+    removeFromStorage(STORAGE_KEYS.ORDERS);
+    removeFromStorage(STORAGE_KEYS.STOCK_LOGS);
+    removeFromStorage(STORAGE_KEYS.CURRENT_USER);
+    removeFromStorage(STORAGE_KEYS.STAFF_USERS);
+    removeFromStorage(STORAGE_KEYS.ACTIVE_STAFF_ID);
 
     setStaffUsers(INITIAL_STAFF_USERS);
     setActiveStaffIdState(INITIAL_STAFF_USERS[0].id);
@@ -1624,6 +2132,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         signInWithGoogle,
         signOutGoogle,
         syncLocalToCloud,
+        assignedRole,
+        hasPendingAccessRequest,
+        canWriteCloudCollection,
+        tenancyMode,
+        shopStatus,
+        shopAccount,
+        currentShop,
+        onboardingVisible: onboardingOpen,
+        showOnboarding,
+        dismissOnboarding,
+        createShopAction,
+        joinShopAction,
       }}
     >
       {children}
